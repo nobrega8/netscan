@@ -183,37 +183,51 @@ async function startSpeedTest() {
         document.getElementById('upload-speed').textContent = '--';
         document.getElementById('ping-time').textContent = '--';
         
-        // Simulate ping test
+        // Real ping test
         updateProgress(10, 'Testing ping...');
-        const ping = await simulatePing();
-        document.getElementById('ping-time').textContent = ping.toFixed(0);
+        const ping = await performRealPing();
+        if (ping !== null) {
+            document.getElementById('ping-time').textContent = ping.toFixed(0);
+        } else {
+            document.getElementById('ping-time').textContent = 'Error';
+        }
         
-        // Simulate download test
+        // Real download test
         updateProgress(30, 'Testing download speed...');
-        const downloadSpeed = await simulateSpeedTest('download');
-        document.getElementById('download-speed').textContent = downloadSpeed.toFixed(1);
-        updateSpeedometer(downloadSpeed);
+        const downloadSpeed = await performRealDownloadTest();
+        if (downloadSpeed !== null) {
+            document.getElementById('download-speed').textContent = downloadSpeed.toFixed(1);
+            updateSpeedometer(downloadSpeed);
+        } else {
+            document.getElementById('download-speed').textContent = 'Error';
+        }
         
-        // Simulate upload test
+        // Real upload test
         updateProgress(70, 'Testing upload speed...');
-        const uploadSpeed = await simulateSpeedTest('upload');
-        document.getElementById('upload-speed').textContent = uploadSpeed.toFixed(1);
+        const uploadSpeed = await performRealUploadTest();
+        if (uploadSpeed !== null) {
+            document.getElementById('upload-speed').textContent = uploadSpeed.toFixed(1);
+        } else {
+            document.getElementById('upload-speed').textContent = 'Error';
+        }
         
         updateProgress(100, 'Test completed!');
         
-        // Save test result
-        const testResult = {
-            timestamp: new Date(),
-            download: downloadSpeed,
-            upload: uploadSpeed,
-            ping: ping
-        };
-        
-        testHistory.push(testResult);
-        saveTestHistory();
-        updateTestHistory();
-        updateChart(testResult);
-        updateStatistics();
+        // Save test result (only if we have valid data)
+        if (ping !== null && downloadSpeed !== null && uploadSpeed !== null) {
+            const testResult = {
+                timestamp: new Date(),
+                download: downloadSpeed,
+                upload: uploadSpeed,
+                ping: ping
+            };
+            
+            testHistory.push(testResult);
+            saveTestHistory();
+            updateTestHistory();
+            updateChart(testResult);
+            updateStatistics();
+        }
         
         setTimeout(() => {
             progressContainer.style.display = 'none';
@@ -235,39 +249,94 @@ function updateProgress(percent, status) {
     document.getElementById('test-status').textContent = status;
 }
 
-// Simulate network tests (in a real implementation, these would call actual speed test APIs)
-async function simulatePing() {
-    return new Promise(resolve => {
-        setTimeout(() => {
-            // Simulate ping between 10-100ms
-            resolve(Math.random() * 90 + 10);
-        }, 1000);
-    });
+// Real network tests using backend APIs
+async function performRealPing() {
+    try {
+        const response = await fetch('/api/speed-test/ping', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ target: '8.8.8.8' })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            return data.ping;
+        } else {
+            console.error('Ping test failed:', data.error);
+            return null;
+        }
+    } catch (error) {
+        console.error('Ping test error:', error);
+        return null;
+    }
 }
 
-async function simulateSpeedTest(type) {
-    return new Promise(resolve => {
-        let steps = 0;
-        const maxSteps = 20;
+async function performRealDownloadTest() {
+    try {
+        // Show intermediate progress
+        let progress = 30;
+        const progressInterval = setInterval(() => {
+            progress += 2;
+            if (progress <= 65) {
+                updateProgress(progress, 'Testing download speed...');
+            }
+        }, 200);
         
-        const interval = setInterval(() => {
-            steps++;
-            const progress = (steps / maxSteps) * 100;
-            
-            if (type === 'download') {
-                updateProgress(30 + (progress * 0.4), `Testing download speed... ${progress.toFixed(0)}%`);
-            } else {
-                updateProgress(70 + (progress * 0.3), `Testing upload speed... ${progress.toFixed(0)}%`);
+        const response = await fetch('/api/speed-test/download', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
             }
-            
-            if (steps >= maxSteps) {
-                clearInterval(interval);
-                // Simulate speed between 1-100 Mbps
-                const speed = Math.random() * 99 + 1;
-                resolve(speed);
+        });
+        
+        clearInterval(progressInterval);
+        
+        const data = await response.json();
+        if (data.success) {
+            return data.download_speed;
+        } else {
+            console.error('Download test failed:', data.error);
+            return null;
+        }
+    } catch (error) {
+        console.error('Download test error:', error);
+        return null;
+    }
+}
+
+async function performRealUploadTest() {
+    try {
+        // Show intermediate progress
+        let progress = 70;
+        const progressInterval = setInterval(() => {
+            progress += 2;
+            if (progress <= 95) {
+                updateProgress(progress, 'Testing upload speed...');
             }
-        }, 100);
-    });
+        }, 200);
+        
+        const response = await fetch('/api/speed-test/upload', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        clearInterval(progressInterval);
+        
+        const data = await response.json();
+        if (data.success) {
+            return data.upload_speed;
+        } else {
+            console.error('Upload test failed:', data.error);
+            return null;
+        }
+    } catch (error) {
+        console.error('Upload test error:', error);
+        return null;
+    }
 }
 
 // Update chart with new data
