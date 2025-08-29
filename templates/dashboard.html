@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h4>{{ online_devices }}</h4>
+                <p>Online Devices</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h4>{{ total_devices }}</h4>
+                <p>Total Devices</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <h4>{{ people }}</h4>
+                <p>People</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <button class="btn btn-light" onclick="startScan()">
+                    <i class="fas fa-search me-2"></i>Scan Now
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Recent Devices</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Hostname</th>
+                                <th>IP Address</th>
+                                <th>MAC Address</th>
+                                <th>Brand</th>
+                                <th>Owner</th>
+                                <th>Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for device in devices[:10] %}
+                            <tr>
+                                <td>
+                                    {% if device.is_online %}
+                                        <span class="badge bg-success">Online</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Offline</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('device_detail', device_id=device.id) }}">
+                                        {{ device.hostname or 'Unknown' }}
+                                    </a>
+                                </td>
+                                <td>{{ device.ip_address }}</td>
+                                <td><code>{{ device.mac_address }}</code></td>
+                                <td>{{ device.brand or '-' }}</td>
+                                <td>{{ device.owner.name if device.owner else '-' }}</td>
+                                <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <a href="{{ url_for('devices') }}" class="btn btn-primary">View All Devices</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startScan() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Scanning...';
+    
+    fetch('/scan', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Scan completed! Found ${data.devices_found} devices.`);
+                location.reload();
+            } else {
+                alert(`Scan failed: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            alert(`Error: ${error}`);
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-search me-2"></i>Scan Now';
+        });
+}
+</script>
+{% endblock %}
