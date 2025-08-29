@@ -125,3 +125,56 @@ body {
 .stats-card:hover {
     transform: translateY(-2px);
 }
+
+/* NetSpeed specific styles */
+.speed-metric h3 {
+    font-size: 2.5rem;
+    font-weight: bold;
+}
+
+.speed-metric {
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+#speedometer {
+    display: block;
+    margin: 0 auto;
+}
+
+#speed-test-container {
+    min-height: 400px;
+}
+
+.progress {
+    height: 10px;
+}
+
+#test-progress {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* Network chart container */
+#network-chart {
+    max-height: 300px;
+}
+
+/* Test history styles */
+#speed-history {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Animated pulse effect */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}

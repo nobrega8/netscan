@@ -76,6 +76,10 @@ def people():
     people = Person.query.all()
     return render_template('people.html', people=people)
 
+@app.route('/netspeed')
+def netspeed():
+    return render_template('netspeed.html')
+
 @app.route('/person/<int:person_id>')
 def person_detail(person_id):
     person = Person.query.get_or_404(person_id)
@@ -171,4 +175,4 @@ def merge_devices():
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=2530)
