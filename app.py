@@ -339,6 +339,9 @@ def stats():
                          user_leaderboard=user_leaderboard,
                          category_leaderboard=category_leaderboard,
                          overall_stats=overall_stats)
+
+@app.route('/settings')
+def settings():
     from models import Device, Person, Scan
     
     stats = {
@@ -409,9 +412,27 @@ def update_system():
                               capture_output=True, text=True, timeout=30)
         
         if result.returncode == 0:
-            # Restart the service (this is a simple example)
-            # In production, you might want to use a proper service manager
-            return jsonify({'success': True, 'message': 'Update completed successfully'})
+            # Try to restart the service using systemctl
+            try:
+                # First try with sudo
+                restart_result = subprocess.run(['sudo', 'systemctl', 'restart', 'netscan'], 
+                                             capture_output=True, text=True, timeout=10)
+                if restart_result.returncode == 0:
+                    return jsonify({'success': True, 'message': 'Update completed successfully. Service restarted.'})
+                else:
+                    # If sudo systemctl fails, try without sudo (in case service is running as current user)
+                    restart_result = subprocess.run(['systemctl', '--user', 'restart', 'netscan'], 
+                                                 capture_output=True, text=True, timeout=10)
+                    if restart_result.returncode == 0:
+                        return jsonify({'success': True, 'message': 'Update completed successfully. Service restarted.'})
+                    else:
+                        # If systemctl restart fails, just report success for the update but mention restart issue
+                        return jsonify({'success': True, 'message': 'Update completed successfully. Please manually restart the service.'})
+            except subprocess.TimeoutExpired:
+                return jsonify({'success': True, 'message': 'Update completed successfully. Service restart timed out - please restart manually.'})
+            except Exception as restart_error:
+                # Update was successful but restart failed
+                return jsonify({'success': True, 'message': f'Update completed successfully. Could not restart service: {str(restart_error)}'})
         else:
             return jsonify({'success': False, 'error': result.stderr})
             
