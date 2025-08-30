@@ -1,56 +1,59 @@
-#!/bin/bash
+sudo tee /opt/netscan/install.sh >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
 
-# NetScan Service Installation Script for Raspberry Pi
+APP_DIR="/opt/netscan"
+RUN_USER="${SUDO_USER:-$USER}"
+RUN_GROUP="$(id -gn "$RUN_USER")"
 
-SERVICE_NAME="netscan"
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-INSTALL_DIR="/opt/netscan"
-USER="pi"
+echo "Installing NetScan service as $RUN_USER:$RUN_GROUP ..."
 
-echo "Installing NetScan service..."
+# 1) Copiar código para /opt/netscan (se ainda não estiver aí)
+SRC="$(pwd)"
+if [ "$SRC" != "$APP_DIR" ]; then
+  sudo rsync -a --delete "$SRC"/ "$APP_DIR"/
+fi
+sudo chown -R "$RUN_USER:$RUN_GROUP" "$APP_DIR"
 
-# Create installation directory
-sudo mkdir -p $INSTALL_DIR
-sudo cp -r . $INSTALL_DIR/
-sudo chown -R $USER:$USER $INSTALL_DIR
+# 2) Dependências do sistema (opcional, só se lock estiver livre)
+if ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+  sudo apt -y install python3-venv
+else
+  echo "APT está ocupado; a instalar só quando livre ou instala manualmente: sudo apt -y install python3-venv"
+fi
 
-# Install system dependencies
-echo "Installing system dependencies..."
-sudo apt-get update
-sudo apt-get install -y python3 python3-pip nmap
+# 3) venv + requirements
+cd "$APP_DIR"
+python3 -m venv venv
+./venv/bin/pip install --upgrade pip
+./venv/bin/pip install -r requirements.txt
 
-# Install Python dependencies
-echo "Installing Python dependencies..."
-cd $INSTALL_DIR
-sudo pip3 install -r requirements.txt
-
-# Create systemd service file
-echo "Creating systemd service..."
-sudo tee $SERVICE_FILE > /dev/null <<EOF
+# 4) Criar/atualizar serviço systemd
+sudo tee /etc/systemd/system/netscan.service >/dev/null <<SERVICE
 [Unit]
 Description=NetScan Network Device Scanner
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-User=$USER
-WorkingDirectory=$INSTALL_DIR
-ExecStart=/usr/bin/python3 $INSTALL_DIR/service.py
-Restart=always
-RestartSec=10
-Environment=PYTHONUNBUFFERED=1
+User=$RUN_USER
+Group=$RUN_GROUP
+WorkingDirectory=$APP_DIR
+Environment="PYTHONUNBUFFERED=1"
+Environment="PATH=$APP_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+ExecStart=$APP_DIR/venv/bin/python $APP_DIR/service.py
+Restart=on-failure
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
+SERVICE
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now netscan
+sudo systemctl status netscan --no-pager
+echo "Done."
 EOF
 
-# Reload systemd and enable service
-sudo systemctl daemon-reload
-sudo systemctl enable $SERVICE_NAME
-
-echo "Installation complete!"
-echo ""
-echo "To start the service: sudo systemctl start $SERVICE_NAME"
-echo "To check status: sudo systemctl status $SERVICE_NAME"
-echo "To view logs: sudo journalctl -u $SERVICE_NAME -f"
-echo "To access web interface: http://localhost:5000"
+sudo chmod +x /opt/netscan/install.sh
