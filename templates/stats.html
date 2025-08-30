@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block title %}Statistics - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-chart-bar me-2"></i>Network Statistics</h2>
+</div>
+
+<!-- Overall Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-primary">{{ overall_stats.total_devices }}</h5>
+                <p class="card-text">Total Devices</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-success">{{ overall_stats.online_devices }}</h5>
+                <p class="card-text">Online Devices</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-warning">{{ overall_stats.total_people }}</h5>
+                <p class="card-text">Registered Users</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-info">{{ overall_stats.total_scans }}</h5>
+                <p class="card-text">Total Scans</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Leaderboards -->
+<div class="row">
+    <!-- Scan Leaderboard -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-trophy me-2 text-warning"></i>Most Scanned Devices</h5>
+            </div>
+            <div class="card-body">
+                {% if scan_leaderboard %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Device</th>
+                                    <th>Scans</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for device in scan_leaderboard %}
+                                    <tr>
+                                        <td>
+                                            {% if loop.index == 1 %}
+                                                <i class="fas fa-crown text-warning"></i>
+                                            {% elif loop.index == 2 %}
+                                                <i class="fas fa-medal text-secondary"></i>
+                                            {% elif loop.index == 3 %}
+                                                <i class="fas fa-medal text-warning"></i>
+                                            {% else %}
+                                                {{ loop.index }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div>
+                                                <strong>{{ device.hostname or 'Unknown' }}</strong>
+                                            </div>
+                                            <small class="text-muted">{{ device.ip_address }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-primary">{{ device.scan_count }}</span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No scan data available yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Brand Leaderboard -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-industry me-2 text-info"></i>Most Common Brands</h5>
+            </div>
+            <div class="card-body">
+                {% if brand_leaderboard %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Brand</th>
+                                    <th>Devices</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for brand in brand_leaderboard %}
+                                    <tr>
+                                        <td>
+                                            {% if loop.index == 1 %}
+                                                <i class="fas fa-crown text-warning"></i>
+                                            {% elif loop.index == 2 %}
+                                                <i class="fas fa-medal text-secondary"></i>
+                                            {% elif loop.index == 3 %}
+                                                <i class="fas fa-medal text-warning"></i>
+                                            {% else %}
+                                                {{ loop.index }}
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ brand.brand }}</td>
+                                        <td>
+                                            <span class="badge bg-info">{{ brand.device_count }}</span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No brand data available yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <!-- User Leaderboard -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-users me-2 text-success"></i>Users with Most Devices</h5>
+            </div>
+            <div class="card-body">
+                {% if user_leaderboard %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>User</th>
+                                    <th>Devices</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in user_leaderboard %}
+                                    <tr>
+                                        <td>
+                                            {% if loop.index == 1 %}
+                                                <i class="fas fa-crown text-warning"></i>
+                                            {% elif loop.index == 2 %}
+                                                <i class="fas fa-medal text-secondary"></i>
+                                            {% elif loop.index == 3 %}
+                                                <i class="fas fa-medal text-warning"></i>
+                                            {% else %}
+                                                {{ loop.index }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div>
+                                                <strong>{{ user.name }}</strong>
+                                            </div>
+                                            {% if user.email %}
+                                                <small class="text-muted">{{ user.email }}</small>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-success">{{ user.device_count }}</span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No user data available yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Leaderboard -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-tags me-2 text-info"></i>Most Common Categories</h5>
+            </div>
+            <div class="card-body">
+                {% if category_leaderboard %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Category</th>
+                                    <th>Devices</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for category in category_leaderboard %}
+                                    <tr>
+                                        <td>
+                                            {% if loop.index == 1 %}
+                                                <i class="fas fa-crown text-warning"></i>
+                                            {% elif loop.index == 2 %}
+                                                <i class="fas fa-medal text-secondary"></i>
+                                            {% elif loop.index == 3 %}
+                                                <i class="fas fa-medal text-warning"></i>
+                                            {% else %}
+                                                {{ loop.index }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if category.category == 'Phone' %}📱
+                                            {% elif category.category == 'Computer' %}💻
+                                            {% elif category.category == 'Network' %}📡
+                                            {% elif category.category == 'Media' %}📺
+                                            {% elif category.category == 'Security' %}🔒
+                                            {% elif category.category == 'Camera' %}📷
+                                            {% elif category.category == 'Smarthome' %}🏠
+                                            {% elif category.category == 'Gaming' %}🎮
+                                            {% elif category.category == 'Storage' %}💾
+                                            {% elif category.category == 'IoT' %}🌐
+                                            {% elif category.category == 'Server' %}🖥️
+                                            {% elif category.category == 'Printer' %}🖨️
+                                            {% endif %} {{ category.category }}
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info">{{ category.device_count }}</span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No category data available yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Additional Statistics -->
+<div class="row mt-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Network Overview</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h6 class="text-muted">Device Status</h6>
+                            <div class="progress mb-2">
+                                {% set online_percentage = (overall_stats.online_devices / overall_stats.total_devices * 100) if overall_stats.total_devices > 0 else 0 %}
+                                <div class="progress-bar bg-success" role="progressbar" style="width: {{ online_percentage }}%"></div>
+                            </div>
+                            <small>{{ overall_stats.online_devices }} online / {{ overall_stats.total_devices }} total</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h6 class="text-muted">Device Ownership</h6>
+                            {% set ownership_percentage = (overall_stats.devices_with_owners / overall_stats.total_devices * 100) if overall_stats.total_devices > 0 else 0 %}
+                            <div class="progress mb-2">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: {{ ownership_percentage }}%"></div>
+                            </div>
+                            <small>{{ overall_stats.devices_with_owners }} assigned / {{ overall_stats.total_devices }} total</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h6 class="text-muted">Unique Brands</h6>
+                            <h4 class="text-primary">{{ overall_stats.unique_brands }}</h4>
+                            <small>different manufacturers</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <h6 class="text-muted">Avg. Open Ports</h6>
+                            <h4 class="text-warning">{{ "%.1f"|format(overall_stats.average_ports_per_device) }}</h4>
+                            <small>ports per device</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

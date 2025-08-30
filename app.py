@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
-from models import db, Device, Person, Scan, OUI
+from werkzeug.utils import secure_filename
+from models import db, Device, Person, Scan, OUI, Settings
 from scanner import NetworkScanner
 from config import Config
 import json
@@ -10,6 +11,11 @@ import tempfile
 import os
 import requests
 from datetime import datetime, timedelta
+try:
+    from PIL import Image, ImageOps
+    PILLOW_AVAILABLE = True
+except ImportError:
+    PILLOW_AVAILABLE = False
 try:
     import speedtest
     SPEEDTEST_AVAILABLE = True
@@ -54,6 +60,60 @@ def get_service_name(port):
     }
     return port_services.get(int(port), f'Port {port}')
 
+def allowed_file(filename):
+    """Check if file extension is allowed for upload"""
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def resize_and_save_image(file, upload_path, target_size=(200, 200)):
+    """Resize uploaded image to uniform size with proper cropping and padding"""
+    if not PILLOW_AVAILABLE:
+        # Fallback: just save the file as-is
+        file.save(upload_path)
+        return
+    
+    try:
+        # Open and process the image
+        image = Image.open(file.stream)
+        
+        # Convert to RGB if necessary (handles RGBA, etc.)
+        if image.mode in ('RGBA', 'LA', 'P'):
+            # Create white background
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+            image = background
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # Auto-crop transparent/white edges
+        image = ImageOps.autocontrast(image)
+        
+        # Use ImageOps.fit to crop and resize maintaining aspect ratio
+        # This crops from center and resizes to exact target size
+        image = ImageOps.fit(image, target_size, Image.Resampling.LANCZOS)
+        
+        # Add slight padding for uniform appearance (0.8 ratio as requested)
+        padding_size = int(target_size[0] * 0.1)  # 10% padding for 0.8 content ratio
+        final_image = Image.new('RGB', target_size, (255, 255, 255))
+        content_size = (target_size[0] - 2*padding_size, target_size[1] - 2*padding_size)
+        
+        # Resize content to fit in padded area
+        image = ImageOps.fit(image, content_size, Image.Resampling.LANCZOS)
+        
+        # Paste centered with padding
+        final_image.paste(image, (padding_size, padding_size))
+        
+        # Save the processed image
+        final_image.save(upload_path, 'JPEG', quality=90, optimize=True)
+        
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        # Fallback: save original file
+        file.seek(0)  # Reset file pointer
+        file.save(upload_path)
+
 # Create tables on startup
 with app.app_context():
     db.create_all()
@@ -91,6 +151,7 @@ def edit_device(device_id):
         device.brand = request.form.get('brand')
         device.model = request.form.get('model')
         device.icon = request.form.get('icon', 'device')
+        device.category = request.form.get('category')
         
         person_id = request.form.get('person_id')
         if person_id:
@@ -103,13 +164,20 @@ def edit_device(device_id):
             file = request.files['device_image']
             if file and file.filename:
                 if allowed_file(file.filename):
+                    # Delete old image if exists
+                    if device.image_path:
+                        old_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), device.image_path)
+                        if os.path.exists(old_path):
+                            os.remove(old_path)
+                    
                     filename = secure_filename(f"device_{device_id}_{file.filename}")
                     upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
                     
                     # Create upload directory if it doesn't exist
                     os.makedirs(os.path.dirname(upload_path), exist_ok=True)
                     
-                    file.save(upload_path)
+                    # Resize and save image uniformly
+                    resize_and_save_image(file, upload_path)
                     device.image_path = filename
             
         db.session.commit()
@@ -124,7 +192,10 @@ def scan_device_ports(device_id):
     
     try:
         # Use the scanner to scan ports for this specific device
-        open_ports = scanner._scan_ports(device.ip_address)
+        open_ports = scanner.scan_ports(device.ip_address)
+        
+        # Get additional device information
+        device_info = scanner.get_device_details(device.ip_address)
         
         # Create port information with service names
         port_info = []
@@ -134,13 +205,30 @@ def scan_device_ports(device_id):
                 'service': get_service_name(port)
             })
         
-        # Update device with new port information
+        # Update device with new port information and details
         device.open_ports = json.dumps(open_ports)
+        if device_info:
+            if device_info.get('os_info'):
+                device.os_info = device_info['os_info']
+            if device_info.get('vendor'):
+                device.vendor = device_info['vendor']
+            if device_info.get('device_type'):
+                device.device_type = device_info['device_type']
+            if device_info.get('os_family'):
+                device.os_family = device_info['os_family']
+            if device_info.get('netbios_name'):
+                device.netbios_name = device_info['netbios_name']
+            if device_info.get('workgroup'):
+                device.workgroup = device_info['workgroup']
+            if device_info.get('services'):
+                device.services = json.dumps(device_info['services'])
+        
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'ports': port_info
+            'ports': port_info,
+            'device_info': device_info
         })
         
     except Exception as e:
@@ -171,12 +259,86 @@ def people():
     people = Person.query.all()
     return render_template('people.html', people=people)
 
+@app.route('/oui_lookup')
+def oui_lookup():
+    ouis = OUI.query.order_by(OUI.prefix).all()
+    return render_template('oui_lookup.html', ouis=ouis)
+
+@app.route('/timeline')
+def timeline():
+    # Get devices with their scan history for timeline view
+    devices = Device.query.all()
+    scans = Scan.query.order_by(Scan.timestamp.desc()).limit(1000).all()
+    return render_template('timeline.html', devices=devices, scans=scans)
+
 @app.route('/netspeed')
 def netspeed():
     return render_template('netspeed.html')
 
-@app.route('/settings')
-def settings():
+@app.route('/stats')
+def stats():
+    """Statistics page with leaderboards"""
+    from sqlalchemy import func, desc
+    
+    # Number of scans per device (leaderboard)
+    scan_leaderboard = db.session.query(
+        Device.hostname,
+        Device.ip_address,
+        Device.mac_address,
+        func.count(Scan.id).label('scan_count')
+    ).join(Scan).group_by(Device.id).order_by(desc('scan_count')).limit(10).all()
+    
+    # Most frequent brands (leaderboard)
+    brand_leaderboard = db.session.query(
+        Device.brand,
+        func.count(Device.id).label('device_count')
+    ).filter(Device.brand.isnot(None), Device.brand != '').group_by(Device.brand).order_by(desc('device_count')).limit(10).all()
+    
+    # Users with most devices (leaderboard)
+    user_leaderboard = db.session.query(
+        Person.name,
+        Person.email,
+        func.count(Device.id).label('device_count')
+    ).join(Device).group_by(Person.id).order_by(desc('device_count')).limit(10).all()
+    
+    # Category leaderboard
+    category_leaderboard = db.session.query(
+        Device.category,
+        func.count(Device.id).label('device_count')
+    ).filter(Device.category.isnot(None), Device.category != '').group_by(Device.category).order_by(desc('device_count')).limit(10).all()
+    
+    # Calculate average ports per device manually for SQLite compatibility
+    devices_with_ports = Device.query.filter(Device.open_ports.isnot(None)).all()
+    total_ports = 0
+    device_count = 0
+    for device in devices_with_ports:
+        try:
+            ports = json.loads(device.open_ports or '[]')
+            total_ports += len(ports)
+            device_count += 1
+        except:
+            continue
+    
+    avg_ports = total_ports / device_count if device_count > 0 else 0
+    
+    # Overall statistics
+    overall_stats = {
+        'total_devices': Device.query.count(),
+        'online_devices': Device.query.filter_by(is_online=True).count(),
+        'offline_devices': Device.query.filter_by(is_online=False).count(),
+        'total_people': Person.query.count(),
+        'total_scans': Scan.query.count(),
+        'devices_with_owners': Device.query.filter(Device.person_id.isnot(None)).count(),
+        'unique_brands': db.session.query(func.count(func.distinct(Device.brand))).filter(Device.brand.isnot(None), Device.brand != '').scalar(),
+        'average_ports_per_device': avg_ports
+    }
+    
+    return render_template('stats.html', 
+                         scan_leaderboard=scan_leaderboard,
+                         brand_leaderboard=brand_leaderboard,
+                         user_leaderboard=user_leaderboard,
+                         category_leaderboard=category_leaderboard,
+                         overall_stats=overall_stats)
     from models import Device, Person, Scan
     
     stats = {
@@ -186,38 +348,46 @@ def settings():
         'total_scans': Scan.query.count()
     }
     
+    # Get settings from database
+    current_settings = {
+        'scan_interval': get_setting('scan_interval', app.config.get('SCAN_INTERVAL_MINUTES', 30)),
+        'network_range': get_setting('network_range', app.config.get('NETWORK_RANGE', 'auto')),
+        'dark_mode': get_setting('dark_mode', 'False') == 'True'
+    }
+    
     # Get last updated time (you can implement this based on your needs)
     last_updated = None
     
     return render_template('settings.html', 
                          config=app.config, 
                          stats=stats, 
-                         last_updated=last_updated)
+                         last_updated=last_updated,
+                         current_settings=current_settings)
 
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
     try:
         scan_interval = request.form.get('scan_interval')
         network_range = request.form.get('network_range')
+        dark_mode = request.form.get('dark_mode') == 'on'
         
-        # Update config.py file
-        config_content = f"""import os
-
-class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///netscan.db'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    
-    # Scan configuration
-    SCAN_INTERVAL_MINUTES = int(os.environ.get('SCAN_INTERVAL_MINUTES', {scan_interval}))
-    NETWORK_RANGE = os.environ.get('NETWORK_RANGE', '{network_range}')  # auto-detect or specify like '192.168.1.0/24'
-    
-    # OUI database
-    OUI_UPDATE_URL = 'http://standards-oui.ieee.org/oui/oui.txt'
-"""
+        # Update settings in database
+        settings_to_update = [
+            ('scan_interval', scan_interval),
+            ('network_range', network_range),
+            ('dark_mode', str(dark_mode))
+        ]
         
-        with open('config.py', 'w') as f:
-            f.write(config_content)
+        for key, value in settings_to_update:
+            setting = Settings.query.filter_by(key=key).first()
+            if setting:
+                setting.value = value
+                setting.updated_at = datetime.utcnow()
+            else:
+                setting = Settings(key=key, value=value)
+                db.session.add(setting)
+        
+        db.session.commit()
         
         return redirect(url_for('settings'))
         
@@ -225,6 +395,11 @@ class Config:
         return render_template('settings.html', 
                              config=app.config, 
                              error=f"Failed to update settings: {str(e)}")
+
+def get_setting(key, default=None):
+    """Get a setting value from database"""
+    setting = Settings.query.filter_by(key=key).first()
+    return setting.value if setting else default
 
 @app.route('/update_system', methods=['POST'])
 def update_system():
@@ -243,6 +418,39 @@ def update_system():
     except subprocess.TimeoutExpired:
         return jsonify({'success': False, 'error': 'Update timeout'})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/update_oui', methods=['POST'])
+def update_oui():
+    try:
+        import requests
+        
+        # Download OUI database from IEEE
+        response = requests.get('http://standards-oui.ieee.org/oui/oui.txt', timeout=30)
+        response.raise_for_status()
+        
+        # Clear existing OUI data
+        OUI.query.delete()
+        
+        # Parse and insert new data
+        count = 0
+        for line in response.text.split('\n'):
+            line = line.strip()
+            if '(hex)' in line:
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    prefix = parts[0].replace('(hex)', '').strip().replace('-', ':')[:8]
+                    manufacturer = parts[1].strip()
+                    
+                    oui = OUI(prefix=prefix, manufacturer=manufacturer)
+                    db.session.add(oui)
+                    count += 1
+        
+        db.session.commit()
+        return jsonify({'success': True, 'count': count})
+        
+    except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/person/<int:person_id>')
@@ -287,7 +495,8 @@ def new_person():
                     # Create upload directory if it doesn't exist
                     os.makedirs(os.path.dirname(upload_path), exist_ok=True)
                     
-                    file.save(upload_path)
+                    # Resize and save image uniformly
+                    resize_and_save_image(file, upload_path)
                     person.image_path = filename
         
         db.session.add(person)
@@ -296,11 +505,45 @@ def new_person():
     
     return render_template('new_person.html')
 
+@app.route('/person/<int:person_id>/edit', methods=['GET', 'POST'])
+def edit_person(person_id):
+    person = Person.query.get_or_404(person_id)
+    
+    if request.method == 'POST':
+        person.name = request.form.get('name')
+        person.email = request.form.get('email')
+        
+        # Handle profile photo upload
+        if 'profile_photo' in request.files:
+            file = request.files['profile_photo']
+            if file and file.filename:
+                if allowed_file(file.filename):
+                    # Delete old image if exists
+                    if person.image_path:
+                        old_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), person.image_path)
+                        if os.path.exists(old_path):
+                            os.remove(old_path)
+                    
+                    filename = secure_filename(f"person_{person.id}_{file.filename}")
+                    upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
+                    
+                    # Create upload directory if it doesn't exist
+                    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+                    
+                    # Resize and save image uniformly
+                    resize_and_save_image(file, upload_path)
+                    person.image_path = filename
+        
+        db.session.commit()
+        return redirect(url_for('person_detail', person_id=person_id))
+    
+    return render_template('edit_person.html', person=person)
+
 @app.route('/scan', methods=['POST'])
 def manual_scan():
     try:
         devices = scanner.scan_network()
-        scanner.mark_offline_devices()
+        scanner.mark_offline_devices()  # Ensure offline devices are marked
         return jsonify({'success': True, 'devices_found': len(devices)})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

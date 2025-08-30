@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Person - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-user-edit me-2"></i>Edit Person</h1>
+    <a href="{{ url_for('person_detail', person_id=person.id) }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Profile
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-user me-2"></i>Person Details</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Name *</label>
+                                <input type="text" class="form-control" id="name" name="name" 
+                                       value="{{ person.name }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       value="{{ person.email or '' }}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="profile_photo" class="form-label">Profile Photo</label>
+                        <input type="file" class="form-control" id="profile_photo" name="profile_photo" 
+                               accept="image/*" onchange="previewImage(this)">
+                        <div class="form-text">
+                            Supported formats: PNG, JPG, JPEG, GIF, BMP, WebP. 
+                            Images will be automatically resized to 200x200 pixels.
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Current/Preview Photo</label>
+                        <div class="d-flex align-items-center">
+                            {% if person.image_path %}
+                                <img id="photo-preview" 
+                                     src="{{ url_for('uploads', filename=person.image_path.split('/')[-1]) }}" 
+                                     alt="Profile Photo" 
+                                     class="avatar avatar-large me-3"
+                                     style="width: 80px; height: 80px; object-fit: cover;">
+                            {% else %}
+                                <div id="photo-preview" class="avatar avatar-large github-avatar me-3" 
+                                     data-identifier="{{ person.name }}"
+                                     style="width: 80px; height: 80px;"></div>
+                            {% endif %}
+                            <div>
+                                <div class="fw-bold">{{ person.name }}</div>
+                                <small class="text-muted">
+                                    {% if person.image_path %}
+                                        Custom photo uploaded
+                                    {% else %}
+                                        Auto-generated avatar
+                                    {% endif %}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('person_detail', person_id=person.id) }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-times me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Person Info</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Created:</strong> {{ person.created_at.strftime('%Y-%m-%d %H:%M') if person.created_at else 'Unknown' }}</p>
+                <p><strong>Associated Devices:</strong> {{ person.devices|length }}</p>
+                {% if person.devices %}
+                <ul class="list-unstyled">
+                    {% for device in person.devices %}
+                    <li class="mb-2">
+                        <a href="{{ url_for('device_detail', device_id=device.id) }}" class="text-decoration-none">
+                            <div class="d-flex align-items-center">
+                                <div class="avatar avatar-small me-2">
+                                    {% if device.image_path %}
+                                        <img src="{{ url_for('uploads', filename=device.image_path.split('/')[-1]) }}" 
+                                             alt="{{ device.hostname or 'Device' }}" class="avatar">
+                                    {% else %}
+                                        <div class="avatar avatar-small github-avatar" 
+                                             data-identifier="{{ device.mac_address }}"></div>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <div class="fw-bold">{{ device.hostname or 'Unknown Device' }}</div>
+                                    <small class="text-muted">{{ device.mac_address }}</small>
+                                </div>
+                            </div>
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function previewImage(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const preview = document.getElementById('photo-preview');
+            if (preview.tagName === 'IMG') {
+                preview.src = e.target.result;
+            } else {
+                // Replace generated avatar with image preview
+                const img = document.createElement('img');
+                img.id = 'photo-preview';
+                img.src = e.target.result;
+                img.alt = 'Preview';
+                img.className = 'avatar avatar-large me-3';
+                img.style.cssText = 'width: 80px; height: 80px; object-fit: cover;';
+                preview.parentNode.replaceChild(img, preview);
+            }
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+// Initialize GitHub-style avatars
+document.addEventListener('DOMContentLoaded', function() {
+    initializeGitHubAvatars();
+});
+</script>
+{% endblock %}

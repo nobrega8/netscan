@@ -212,10 +212,10 @@ function setGitHubAvatar(element, identifier) {
 
 // Initialize GitHub-style avatars for people without photos
 function initializeGitHubAvatars() {
-    const avatarElements = document.querySelectorAll('.avatar-initials:not(.github-avatar)');
+    const avatarElements = document.querySelectorAll('.github-avatar:not([style*="background-image"])');
     avatarElements.forEach(element => {
-        // Get identifier from data attribute or text content
-        const identifier = element.dataset.identifier || element.textContent.trim();
+        // Get identifier from data attribute
+        const identifier = element.dataset.identifier;
         if (identifier) {
             setGitHubAvatar(element, identifier);
         }

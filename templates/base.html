@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}NetScan{% endblock %}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link href="{{ url_for('static', filename='css/bootstrap-local.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/fontawesome-local.css') }}" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
@@ -18,7 +19,9 @@
                 <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
                 <a class="nav-link" href="{{ url_for('devices') }}">Devices</a>
                 <a class="nav-link" href="{{ url_for('people') }}">People</a>
-                <a class="nav-link" href="{{ url_for('netspeed') }}">NetSpeed</a>
+                <a class="nav-link" href="{{ url_for('oui_lookup') }}">OUI Lookup</a>
+                <a class="nav-link" href="{{ url_for('timeline') }}">Timeline</a>
+                <a class="nav-link" href="{{ url_for('stats') }}">Stats</a>
                 <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
             </div>
         </div>
@@ -30,6 +33,18 @@
 
     <script src="{{ url_for('static', filename='js/bootstrap-local.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Load dark mode preference on all pages
+        document.addEventListener('DOMContentLoaded', function() {
+            const darkMode = localStorage.getItem('darkMode') === 'true';
+            document.body.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+            
+            // Initialize GitHub-style avatars
+            if (typeof initializeGitHubAvatars === 'function') {
+                initializeGitHubAvatars();
+            }
+        });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
