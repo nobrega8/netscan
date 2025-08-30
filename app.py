@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
 from models import db, Device, Person, Scan, OUI
 from scanner import NetworkScanner
 from config import Config
@@ -23,6 +23,7 @@ except ImportError:
 
 app = Flask(__name__)
 app.config.from_object(Config)
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
 
 db.init_app(app)
 scanner = NetworkScanner()
@@ -36,6 +37,22 @@ def from_json_filter(value):
         except:
             return []
     return []
+
+# Template filter for service name mapping
+@app.template_filter('get_service_name')
+def get_service_name_filter(port):
+    return get_service_name(port)
+
+def get_service_name(port):
+    """Get common service name for a port number"""
+    port_services = {
+        22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS', 80: 'HTTP', 
+        110: 'POP3', 143: 'IMAP', 443: 'HTTPS', 993: 'IMAPS', 995: 'POP3S',
+        21: 'FTP', 139: 'NetBIOS', 445: 'SMB', 3389: 'RDP', 5900: 'VNC',
+        8080: 'HTTP-Alt', 8443: 'HTTPS-Alt', 3306: 'MySQL', 5432: 'PostgreSQL',
+        1433: 'SQL Server', 6379: 'Redis', 27017: 'MongoDB'
+    }
+    return port_services.get(int(port), f'Port {port}')
 
 # Create tables on startup
 with app.app_context():
@@ -80,12 +97,74 @@ def edit_device(device_id):
             device.person_id = int(person_id)
         else:
             device.person_id = None
+        
+        # Handle image upload
+        if 'device_image' in request.files:
+            file = request.files['device_image']
+            if file and file.filename:
+                if allowed_file(file.filename):
+                    filename = secure_filename(f"device_{device_id}_{file.filename}")
+                    upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
+                    
+                    # Create upload directory if it doesn't exist
+                    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+                    
+                    file.save(upload_path)
+                    device.image_path = filename
             
         db.session.commit()
         return redirect(url_for('device_detail', device_id=device.id))
     
     people = Person.query.all()
     return render_template('edit_device.html', device=device, people=people)
+
+@app.route('/device/<int:device_id>/scan_ports', methods=['POST'])
+def scan_device_ports(device_id):
+    device = Device.query.get_or_404(device_id)
+    
+    try:
+        # Use the scanner to scan ports for this specific device
+        open_ports = scanner._scan_ports(device.ip_address)
+        
+        # Create port information with service names
+        port_info = []
+        for port in open_ports:
+            port_info.append({
+                'port': port,
+                'service': get_service_name(port)
+            })
+        
+        # Update device with new port information
+        device.open_ports = json.dumps(open_ports)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'ports': port_info
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def secure_filename(filename):
+    """Secure filename by removing unsafe characters"""
+    import re
+    filename = re.sub(r'[^a-zA-Z0-9._-]', '', filename)
+    return filename
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    """Serve uploaded files"""
+    upload_folder = app.config.get('UPLOAD_FOLDER', 'static/uploads')
+    return send_from_directory(upload_folder, filename)
 
 @app.route('/people')
 def people():
@@ -95,6 +174,76 @@ def people():
 @app.route('/netspeed')
 def netspeed():
     return render_template('netspeed.html')
+
+@app.route('/settings')
+def settings():
+    from models import Device, Person, Scan
+    
+    stats = {
+        'total_devices': Device.query.count(),
+        'online_devices': Device.query.filter_by(is_online=True).count(),
+        'people_count': Person.query.count(),
+        'total_scans': Scan.query.count()
+    }
+    
+    # Get last updated time (you can implement this based on your needs)
+    last_updated = None
+    
+    return render_template('settings.html', 
+                         config=app.config, 
+                         stats=stats, 
+                         last_updated=last_updated)
+
+@app.route('/update_settings', methods=['POST'])
+def update_settings():
+    try:
+        scan_interval = request.form.get('scan_interval')
+        network_range = request.form.get('network_range')
+        
+        # Update config.py file
+        config_content = f"""import os
+
+class Config:
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///netscan.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    
+    # Scan configuration
+    SCAN_INTERVAL_MINUTES = int(os.environ.get('SCAN_INTERVAL_MINUTES', {scan_interval}))
+    NETWORK_RANGE = os.environ.get('NETWORK_RANGE', '{network_range}')  # auto-detect or specify like '192.168.1.0/24'
+    
+    # OUI database
+    OUI_UPDATE_URL = 'http://standards-oui.ieee.org/oui/oui.txt'
+"""
+        
+        with open('config.py', 'w') as f:
+            f.write(config_content)
+        
+        return redirect(url_for('settings'))
+        
+    except Exception as e:
+        return render_template('settings.html', 
+                             config=app.config, 
+                             error=f"Failed to update settings: {str(e)}")
+
+@app.route('/update_system', methods=['POST'])
+def update_system():
+    try:
+        # Perform git pull
+        result = subprocess.run(['git', 'pull', 'origin', 'main'], 
+                              capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            # Restart the service (this is a simple example)
+            # In production, you might want to use a proper service manager
+            return jsonify({'success': True, 'message': 'Update completed successfully'})
+        else:
+            return jsonify({'success': False, 'error': result.stderr})
+            
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'error': 'Update timeout'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/person/<int:person_id>')
 def person_detail(person_id):
@@ -123,6 +272,24 @@ def new_person():
             name=request.form.get('name'),
             email=request.form.get('email')
         )
+        
+        # Handle profile photo upload
+        if 'profile_photo' in request.files:
+            file = request.files['profile_photo']
+            if file and file.filename:
+                if allowed_file(file.filename):
+                    db.session.add(person)  # Add first to get the ID
+                    db.session.flush()  # Flush to get the ID without committing
+                    
+                    filename = secure_filename(f"person_{person.id}_{file.filename}")
+                    upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
+                    
+                    # Create upload directory if it doesn't exist
+                    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+                    
+                    file.save(upload_path)
+                    person.image_path = filename
+        
         db.session.add(person)
         db.session.commit()
         return redirect(url_for('people'))

@@ -1,44 +1,334 @@
-/* Custom styles for NetScan */
+/* GitHub-style NetScan UI */
+
+:root {
+    --color-canvas-default: #ffffff;
+    --color-canvas-subtle: #f6f8fa;
+    --color-border-default: #d0d7de;
+    --color-border-muted: #d1d9e0;
+    --color-neutral-muted: #656d76;
+    --color-fg-default: #1f2328;
+    --color-fg-muted: #656d76;
+    --color-accent-fg: #0969da;
+    --color-accent-emphasis: #0969da;
+    --color-success-fg: #1a7f37;
+    --color-danger-fg: #d1242f;
+    --color-done-fg: #8250df;
+    --color-sponsors-fg: #bf4b8a;
+    --color-primer-shadow-inset: inset 0 1px 0 rgba(208, 215, 222, 0.2);
+}
 
 body {
-    background-color: #f8f9fa;
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0;
+    min-height: 100vh;
+}
+
+.navbar {
+    background-color: var(--color-canvas-default) !important;
+    border-bottom: 1px solid var(--color-border-default);
+    box-shadow: 0 1px 0 rgba(27, 31, 36, 0.04);
+    padding: 16px 0;
 }
 
 .navbar-brand {
-    font-weight: bold;
+    font-weight: 600;
+    color: var(--color-fg-default) !important;
+    font-size: 16px;
+    text-decoration: none;
 }
 
+.navbar-brand:hover {
+    color: var(--color-accent-fg) !important;
+}
+
+.nav-link {
+    color: var(--color-fg-default) !important;
+    font-weight: 500;
+    padding: 8px 16px !important;
+    border-radius: 6px;
+    margin: 0 2px;
+    transition: background-color 0.2s ease;
+}
+
+.nav-link:hover {
+    color: var(--color-fg-default) !important;
+    background-color: var(--color-canvas-subtle);
+}
+
+.nav-link.active {
+    color: var(--color-fg-default) !important;
+    background-color: var(--color-canvas-subtle);
+}
+
+.container {
+    background-color: transparent;
+    padding: 24px;
+    margin-top: 0;
+    max-width: 1280px;
+}
+
+/* GitHub-style cards */
 .card {
-    border: none;
-    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
-    transition: box-shadow 0.15s ease-in-out;
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    background-color: var(--color-canvas-default);
+    box-shadow: var(--color-primer-shadow-inset);
+    margin-bottom: 16px;
 }
 
 .card:hover {
-    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    border-color: var(--color-border-muted);
+}
+
+.card-body {
+    padding: 16px;
+}
+
+/* GitHub-style buttons */
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 14px;
+    padding: 5px 16px;
+    border: 1px solid;
+    transition: all 0.2s cubic-bezier(0.3, 0, 0.5, 1);
+    position: relative;
+    display: inline-block;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.btn-primary {
+    color: #ffffff;
+    background-color: var(--color-accent-emphasis);
+    border-color: var(--color-accent-emphasis);
+    box-shadow: var(--color-primer-shadow-inset);
+}
+
+.btn-primary:hover {
+    background-color: #0860ca;
+    border-color: #0860ca;
+    color: #ffffff;
+}
+
+.btn-success {
+    color: #ffffff;
+    background-color: var(--color-success-fg);
+    border-color: var(--color-success-fg);
+    box-shadow: var(--color-primer-shadow-inset);
+}
+
+.btn-success:hover {
+    background-color: #1f7f37;
+    border-color: #1f7f37;
+    color: #ffffff;
+}
+
+.btn-outline-secondary {
+    color: var(--color-fg-default);
+    background-color: var(--color-canvas-default);
+    border-color: var(--color-border-default);
+}
+
+.btn-outline-secondary:hover {
+    background-color: var(--color-canvas-subtle);
+    border-color: var(--color-border-default);
+    color: var(--color-fg-default);
+}
+
+/* GitHub-style tables */
+.table {
+    background-color: var(--color-canvas-default);
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 .table th {
-    border-top: none;
+    background-color: var(--color-canvas-subtle);
+    border-bottom: 1px solid var(--color-border-default);
+    color: var(--color-fg-default);
     font-weight: 600;
-    color: #495057;
+    padding: 8px 12px;
+    vertical-align: middle;
 }
 
+.table td {
+    border-bottom: 1px solid var(--color-border-default);
+    padding: 8px 12px;
+    vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: var(--color-canvas-subtle);
+}
+
+/* GitHub-style badges */
 .badge {
-    font-size: 0.75rem;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 6px;
+    text-transform: none;
 }
 
-.btn-group-sm > .btn {
-    padding: 0.25rem 0.5rem;
+.bg-success {
+    background-color: var(--color-success-fg) !important;
 }
 
+.bg-secondary {
+    background-color: var(--color-neutral-muted) !important;
+}
+
+.bg-info {
+    background-color: var(--color-accent-fg) !important;
+}
+
+/* GitHub-style alerts */
+.alert {
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.alert-info {
+    background-color: #ddf4ff;
+    border-color: #54aeff;
+    color: #0969da;
+}
+
+.alert-warning {
+    background-color: #fff8c5;
+    border-color: #ffd33d;
+    color: #7d4e00;
+}
+
+.alert-success {
+    background-color: #dafbe1;
+    border-color: #2da44e;
+    color: #1a7f37;
+}
+
+/* GitHub-style forms */
+.form-control {
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    font-size: 14px;
+    padding: 5px 12px;
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.form-control:focus {
+    border-color: var(--color-accent-fg);
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+    outline: none;
+}
+
+.form-label {
+    font-weight: 600;
+    color: var(--color-fg-default);
+    margin-bottom: 8px;
+}
+
+/* Utility classes */
+.text-muted {
+    color: var(--color-fg-muted) !important;
+}
+
+.text-primary {
+    color: var(--color-accent-fg) !important;
+}
+
+.text-success {
+    color: var(--color-success-fg) !important;
+}
+
+.text-warning {
+    color: #bf8700 !important;
+}
+
+/* Remove old animations and effects */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 /* Device status indicators */
 .status-online {
-    color: #28a745;
+    color: var(--color-success-fg);
 }
 
 .status-offline {
-    color: #6c757d;
+    color: var(--color-neutral-muted);
+}
+
+/* GitHub-style avatar system */
+.avatar {
+    display: inline-block;
+    border-radius: 50%;
+    border: 1px solid var(--color-border-default);
+    background-color: var(--color-canvas-subtle);
+}
+
+.avatar-small {
+    width: 20px;
+    height: 20px;
+}
+
+.avatar-medium {
+    width: 40px;
+    height: 40px;
+}
+
+.avatar-large {
+    width: 80px;
+    height: 80px;
+}
+
+.avatar-initials {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    color: var(--color-fg-default);
+    text-transform: uppercase;
+}
+
+/* GitHub-style generated avatars */
+.github-avatar {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .container {
+        padding: 16px;
+    }
+    
+    .card-body {
+        padding: 12px;
+    }
+    
+    .btn {
+        padding: 4px 12px;
+        font-size: 12px;
+    }
 }
 
 /* Timeline styles */
@@ -117,13 +407,52 @@ body {
     color: #495057;
 }
 
-/* Stats cards */
+/* Enhanced stats cards with glassmorphism */
 .stats-card {
-    transition: transform 0.2s;
+    transition: all 0.4s ease;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    color: white;
+    overflow: hidden;
+    position: relative;
+}
+
+.stats-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 .stats-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.stats-card h4 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.stats-card p {
+    margin: 0;
+    font-weight: 500;
+    opacity: 0.9;
 }
 
 /* NetSpeed specific styles */

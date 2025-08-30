@@ -136,6 +136,9 @@ document.addEventListener('DOMContentLoaded', function() {
         startAutoRefresh();
     }
     
+    // Initialize GitHub-style avatars
+    initializeGitHubAvatars();
+    
     // Add device ID attributes to table rows for easier updates
     const deviceRows = document.querySelectorAll('table tbody tr');
     deviceRows.forEach((row, index) => {
@@ -146,6 +149,78 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// GitHub-style avatar generation
+function generateGitHubAvatar(identifier, size = 80) {
+    // Create a simple hash from the identifier
+    let hash = 0;
+    for (let i = 0; i < identifier.length; i++) {
+        const char = identifier.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    // Generate colors based on hash
+    const hue = Math.abs(hash) % 360;
+    const saturation = 65 + (Math.abs(hash >> 8) % 20); // 65-85%
+    const lightness = 40 + (Math.abs(hash >> 16) % 20); // 40-60%
+    
+    // Create canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    
+    // Background
+    ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+    ctx.fillRect(0, 0, size, size);
+    
+    // Generate geometric pattern (GitHub-style identicon)
+    const gridSize = 5;
+    const cellSize = size / gridSize;
+    
+    // Create a pattern based on hash
+    for (let x = 0; x < Math.ceil(gridSize / 2); x++) {
+        for (let y = 0; y < gridSize; y++) {
+            const index = x * gridSize + y;
+            const hashBit = (Math.abs(hash >> index) % 2) === 1;
+            
+            if (hashBit) {
+                // Darker shade for pattern
+                ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness - 20}%)`;
+                
+                // Draw left side
+                ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                
+                // Mirror to right side (except middle column)
+                if (x < Math.floor(gridSize / 2)) {
+                    ctx.fillRect((gridSize - 1 - x) * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+        }
+    }
+    
+    return canvas.toDataURL();
+}
+
+function setGitHubAvatar(element, identifier) {
+    const avatarUrl = generateGitHubAvatar(identifier, 80);
+    element.style.backgroundImage = `url(${avatarUrl})`;
+    element.classList.add('github-avatar');
+    element.innerHTML = ''; // Remove initials
+}
+
+// Initialize GitHub-style avatars for people without photos
+function initializeGitHubAvatars() {
+    const avatarElements = document.querySelectorAll('.avatar-initials:not(.github-avatar)');
+    avatarElements.forEach(element => {
+        // Get identifier from data attribute or text content
+        const identifier = element.dataset.identifier || element.textContent.trim();
+        if (identifier) {
+            setGitHubAvatar(element, identifier);
+        }
+    });
+}
 
 // Cleanup when page unloads
 window.addEventListener('beforeunload', function() {
