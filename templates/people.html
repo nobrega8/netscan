@@ -18,10 +18,10 @@
                 <div class="text-center mb-3">
                     {% if person.image_path %}
                         <img src="{{ url_for('uploaded_file', filename=person.image_path) }}" 
-                             alt="Profile Photo" class="rounded-circle" style="width: 80px; height: 80px; object-fit: cover;">
+                             alt="Profile Photo" class="avatar avatar-large" style="object-fit: cover;">
                     {% else %}
-                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto" 
-                             style="width: 80px; height: 80px; font-size: 2rem;">
+                        <div class="avatar avatar-large avatar-initials" 
+                             data-identifier="{{ person.name + person.email if person.email else person.name }}">
                             {{ person.name[0]|upper }}
                         </div>
                     {% endif %}
