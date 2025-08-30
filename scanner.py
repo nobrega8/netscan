@@ -11,7 +11,12 @@ import time
 
 class NetworkScanner:
     def __init__(self):
-        self.nm = nmap.PortScanner()
+        try:
+            self.nm = nmap.PortScanner()
+        except Exception as e:
+            # For migration purposes, allow scanner to be created without nmap
+            print(f"Warning: Could not initialize nmap scanner: {e}")
+            self.nm = None
         
     def get_network_range(self):
         """Auto-detect network range or use configured range"""

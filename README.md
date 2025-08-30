@@ -26,6 +26,10 @@ cd netscan
 # Install dependencies
 pip3 install -r requirements.txt
 
+# Initialize database (for new installations)
+export FLASK_APP=app.py
+flask db upgrade
+
 # Run the application
 python3 app.py
 ```
@@ -38,6 +42,10 @@ Access the web interface at: http://localhost:2530
 # Install as system service
 sudo ./install.sh
 
+# Initialize/upgrade database
+export FLASK_APP=app.py
+flask db upgrade
+
 # Start the service
 sudo systemctl start netscan
 
@@ -47,6 +55,65 @@ sudo systemctl enable netscan
 # Check status
 sudo systemctl status netscan
 ```
+
+### Updating an Existing Installation
+
+NetScan now includes database migrations and auto-healing to handle schema updates safely.
+
+#### Option 1: Automated Deployment (Recommended)
+
+```bash
+# Use the deployment script for automatic updates
+./deploy.sh
+```
+
+The deployment script will:
+1. Create a database backup
+2. Pull latest changes from Git  
+3. Install/update dependencies
+4. Run database migrations
+5. Restart the service
+
+#### Option 2: Manual Update Process
+
+```bash
+# Pull latest changes
+git pull --ff-only origin main
+
+# Install/update dependencies
+pip install -r requirements.txt
+
+# Run database migrations
+export FLASK_APP=app.py
+flask db upgrade
+
+# Restart the service
+sudo systemctl restart netscan
+```
+
+#### Database Auto-Healing
+
+NetScan includes an automatic database healing system for SQLite installations:
+
+- **Automatic**: Missing columns are automatically added when the application starts
+- **Safe**: Only adds missing columns, never removes or modifies existing data
+- **Logging**: All changes are logged for transparency
+
+To disable auto-healing (not recommended):
+```bash
+export DISABLE_SQLITE_AUTOHEAL=1
+```
+
+#### Migration Troubleshooting
+
+If you encounter database-related errors after an update:
+
+1. **Check migration status**: `flask db current`
+2. **View migration history**: `flask db history`
+3. **Manual backup**: `cp instance/netscan.db instance/netscan.db.backup`
+4. **Reset migrations** (last resort): Delete the database and run `flask db upgrade`
+
+For production deployments, database migrations ensure safe schema evolution without data loss.
 
 ## Configuration
 
@@ -96,10 +163,22 @@ Edit `config.py` to customize:
 
 ## Database Schema
 
-- **devices**: Core device information and status
+NetScan uses SQLAlchemy with Flask-Migrate for database management:
+
+- **devices**: Core device information and status (includes recent additions: os_info, vendor, device_type, os_family, netbios_name, workgroup, services, category)
 - **people**: User/owner information  
 - **scans**: Historical scan results and timeline data
 - **ouis**: MAC address manufacturer lookup table
+- **settings**: Application configuration and preferences
+
+### Database Migrations
+
+The application uses Alembic/Flask-Migrate for safe database schema evolution:
+
+- **Migration files**: Located in `migrations/versions/`
+- **Auto-healing**: SQLite installations automatically add missing columns
+- **Production safe**: Preserves data during schema updates
+- **Version control**: Migration history tracks all schema changes
 
 ## License
 

@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from flask_migrate import Migrate
 from werkzeug.utils import secure_filename
 from models import db, Device, Person, Scan, OUI, Settings
 from scanner import NetworkScanner
@@ -32,6 +33,7 @@ app.config.from_object(Config)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 
 db.init_app(app)
+migrate = Migrate(app, db)
 scanner = NetworkScanner()
 
 # Template filter for JSON parsing
@@ -114,12 +116,22 @@ def resize_and_save_image(file, upload_path, target_size=(200, 200)):
         file.seek(0)  # Reset file pointer
         file.save(upload_path)
 
-# Create tables on startup
-with app.app_context():
-    db.create_all()
+def ensure_sqlite_columns():
+    """
+    Auto-healing for SQLite databases - moved to db_autoheal.py module
+    This function is kept for backward compatibility but delegates to the separate module.
+    """
+    from db_autoheal import ensure_sqlite_columns as ensure_columns
+    ensure_columns()
+
+# Database initialization is now handled manually or via auto-healing
+# Auto-healing functionality is available via the ensure_sqlite_columns function
 
 @app.route('/')
 def dashboard():
+    # Ensure database schema is up-to-date on first access
+    ensure_sqlite_columns()
+    
     devices = Device.query.all()
     online_devices = Device.query.filter_by(is_online=True).count()
     total_devices = Device.query.count()
