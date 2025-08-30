@@ -9,6 +9,9 @@
         {{ device.hostname or 'Unknown Device' }}
     </h2>
     <div>
+        <button class="btn btn-info me-2" onclick="scanDevicePorts()" id="port-scan-btn">
+            <i class="fas fa-search me-2"></i>Scan Open Ports
+        </button>
         <a href="{{ url_for('edit_device', device_id=device.id) }}" class="btn btn-primary">
             <i class="fas fa-edit me-2"></i>Edit
         </a>
@@ -80,10 +83,19 @@
                 
                 {% if device.open_ports %}
                     <h6>Open Ports:</h6>
-                    {% set ports = device.open_ports | from_json %}
-                    {% for port in ports %}
-                        <span class="badge bg-info me-1">{{ port }}</span>
-                    {% endfor %}
+                    <div id="ports-container">
+                        {% set ports = device.open_ports | from_json %}
+                        {% for port in ports %}
+                            <span class="badge bg-info me-1 mb-1">
+                                {{ port }} 
+                                <small class="text-light">{{ get_service_name(port) }}</small>
+                            </span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div id="ports-container">
+                        <p class="text-muted">No open ports detected. Click "Scan Open Ports" to check.</p>
+                    </div>
                 {% endif %}
                 
                 {% if device.merged_devices %}
@@ -144,4 +156,68 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function scanDevicePorts() {
+    const button = document.getElementById('port-scan-btn');
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Scanning...';
+    
+    fetch(`/device/{{ device.id }}/scan_ports`, { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update the ports display
+                const portsContainer = document.getElementById('ports-container');
+                if (data.ports && data.ports.length > 0) {
+                    let portsHtml = '<h6>Open Ports:</h6>';
+                    data.ports.forEach(portInfo => {
+                        portsHtml += `<span class="badge bg-info me-1 mb-1">
+                            ${portInfo.port} 
+                            <small class="text-light">${portInfo.service}</small>
+                        </span>`;
+                    });
+                    portsContainer.innerHTML = portsHtml;
+                } else {
+                    portsContainer.innerHTML = '<p class="text-muted">No open ports detected.</p>';
+                }
+                
+                // Show success message
+                showAlert('Port scan completed successfully!', 'success');
+            } else {
+                showAlert(`Port scan failed: ${data.error}`, 'danger');
+            }
+        })
+        .catch(error => {
+            showAlert(`Error: ${error}`, 'danger');
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.innerHTML = originalText;
+        });
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+</script>
 {% endblock %}

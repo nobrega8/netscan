@@ -11,6 +11,7 @@ class Device(db.Model):
     brand = db.Column(db.String(100))
     model = db.Column(db.String(100))
     icon = db.Column(db.String(50), default='device')
+    image_path = db.Column(db.String(255))  # Path to uploaded device image
     is_online = db.Column(db.Boolean, default=False)
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     first_seen = db.Column(db.DateTime, default=datetime.utcnow)
@@ -24,6 +25,7 @@ class Person(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100))
+    image_path = db.Column(db.String(255))  # Path to uploaded profile photo
     devices = db.relationship('Device', backref='owner', lazy=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

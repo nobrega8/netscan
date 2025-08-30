@@ -15,30 +15,47 @@
     <div class="col-md-6 col-lg-4 mb-4">
         <div class="card">
             <div class="card-body">
-                <h5 class="card-title">
-                    <i class="fas fa-user me-2"></i>{{ person.name }}
+                <div class="text-center mb-3">
+                    {% if person.image_path %}
+                        <img src="{{ url_for('uploaded_file', filename=person.image_path) }}" 
+                             alt="Profile Photo" class="rounded-circle" style="width: 80px; height: 80px; object-fit: cover;">
+                    {% else %}
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto" 
+                             style="width: 80px; height: 80px; font-size: 2rem;">
+                            {{ person.name[0]|upper }}
+                        </div>
+                    {% endif %}
+                </div>
+                <h5 class="card-title text-center">
+                    {{ person.name }}
                 </h5>
                 {% if person.email %}
-                    <p class="card-text">
+                    <p class="card-text text-center">
                         <i class="fas fa-envelope me-2"></i>{{ person.email }}
                     </p>
                 {% endif %}
-                <p class="card-text">
+                <p class="card-text text-center">
                     <strong>{{ person.devices | length }}</strong> device(s)
                 </p>
                 <div class="mb-2">
                     {% for device in person.devices[:3] %}
                         <span class="badge bg-{% if device.is_online %}success{% else %}secondary{% endif %} me-1">
-                            {{ device.hostname or device.mac_address[:8] }}
+                            {% if device.brand and device.model %}
+                                {{ device.brand }} {{ device.model }}
+                            {% else %}
+                                {{ device.hostname or device.mac_address[:8] }}
+                            {% endif %}
                         </span>
                     {% endfor %}
                     {% if person.devices | length > 3 %}
                         <span class="badge bg-info">+{{ person.devices | length - 3 }}</span>
                     {% endif %}
                 </div>
-                <a href="{{ url_for('person_detail', person_id=person.id) }}" class="btn btn-primary">
-                    View Details
-                </a>
+                <div class="text-center">
+                    <a href="{{ url_for('person_detail', person_id=person.id) }}" class="btn btn-primary">
+                        View Details
+                    </a>
+                </div>
             </div>
         </div>
     </div>

@@ -10,7 +10,7 @@
                 <h5>Edit Device</h5>
             </div>
             <div class="card-body">
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data">
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
@@ -66,6 +66,19 @@
                                 </option>
                             {% endfor %}
                         </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="device_image" class="form-label">Device Image</label>
+                        <input type="file" class="form-control" id="device_image" name="device_image" accept="image/png,image/jpeg,image/jpg">
+                        <div class="form-text">Upload a PNG/JPG image to represent this device</div>
+                        {% if device.image_path %}
+                            <div class="mt-2">
+                                <img src="{{ url_for('uploaded_file', filename=device.image_path) }}" 
+                                     alt="Device Image" class="img-thumbnail" style="max-width: 100px;">
+                                <small class="text-muted d-block">Current image</small>
+                            </div>
+                        {% endif %}
                     </div>
                     
                     <hr>
