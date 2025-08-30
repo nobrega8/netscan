@@ -117,14 +117,14 @@ class NetworkScanner:
             if not mac_address:
                 return None
             
-            # Get open ports (quick scan of common ports)
-            open_ports = self._scan_ports(ip)
+            # Don't scan ports during network discovery to preserve existing port data
+            # Ports should only be scanned when explicitly requested
             
             return {
                 'ip_address': ip,
                 'hostname': hostname,
                 'mac_address': mac_address,
-                'open_ports': open_ports,
+                'open_ports': None,  # Don't reset existing port data
                 'is_online': True,
                 'timestamp': datetime.utcnow()
             }
@@ -334,7 +334,10 @@ class NetworkScanner:
                 device.hostname = device_info['hostname']
                 device.is_online = True
                 device.last_seen = device_info['timestamp']
-                device.open_ports = json.dumps(device_info['open_ports'])
+                
+                # Only update open_ports if new data is provided (not None)
+                if device_info.get('open_ports') is not None:
+                    device.open_ports = json.dumps(device_info['open_ports'])
                 
                 # Update additional fields if provided
                 if 'os_info' in device_info:
@@ -358,7 +361,7 @@ class NetworkScanner:
                     is_online=True,
                     last_seen=device_info['timestamp'],
                     first_seen=device_info['timestamp'],
-                    open_ports=json.dumps(device_info['open_ports']),
+                    open_ports=json.dumps(device_info.get('open_ports', [])),
                     os_info=device_info.get('os_info'),
                     vendor=device_info.get('vendor'),
                     device_type=device_info.get('device_type'),
@@ -368,12 +371,13 @@ class NetworkScanner:
                 )
                 db.session.add(device)
             
-            # Record scan
+            # Record scan (only include ports if provided)
+            scan_open_ports = device_info.get('open_ports')
             scan = Scan(
                 device_id=device.id if device.id else None,
                 ip_address=device_info['ip_address'],
                 is_online=True,
-                open_ports=json.dumps(device_info['open_ports']),
+                open_ports=json.dumps(scan_open_ports) if scan_open_ports is not None else None,
                 timestamp=device_info['timestamp']
             )
             

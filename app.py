@@ -192,6 +192,19 @@ def edit_device(device_id):
                     resize_and_save_image(file, upload_path)
                     device.image_path = filename
             
+        # Update OUI database if brand was manually assigned
+        if device.brand and device.mac_address:
+            oui_prefix = device.mac_address.replace(':', '').upper()[:6]
+            # Check if this OUI prefix exists in the database
+            existing_oui = OUI.query.filter_by(prefix=oui_prefix).first()
+            if not existing_oui:
+                # Add new OUI entry with the manually assigned brand
+                oui = OUI(prefix=oui_prefix, manufacturer=device.brand)
+                db.session.add(oui)
+            elif existing_oui.manufacturer != device.brand:
+                # Update existing OUI if the brand is different
+                existing_oui.manufacturer = device.brand
+        
         db.session.commit()
         return redirect(url_for('device_detail', device_id=device.id))
     
@@ -275,30 +288,6 @@ def people():
 def oui_lookup():
     ouis = OUI.query.order_by(OUI.prefix).all()
     return render_template('oui_lookup.html', ouis=ouis)
-
-@app.route('/timeline')
-def timeline():
-    try:
-        # Get devices with their scan history for timeline view
-        devices = []
-        scans = []
-        
-        try:
-            devices = Device.query.all()
-        except Exception as e:
-            print(f"Error getting devices for timeline: {e}")
-            
-        try:
-            scans = Scan.query.order_by(Scan.timestamp.desc()).limit(1000).all()
-        except Exception as e:
-            print(f"Error getting scans for timeline: {e}")
-            
-        return render_template('timeline.html', devices=devices, scans=scans)
-        
-    except Exception as e:
-        print(f"Error in timeline page: {e}")
-        # Return empty timeline in case of error
-        return render_template('timeline.html', devices=[], scans=[])
 
 @app.route('/netspeed')
 def netspeed():
@@ -674,6 +663,14 @@ def edit_person(person_id):
         person.name = request.form.get('name')
         person.email = request.form.get('email')
         
+        # Handle photo deletion
+        if request.form.get('delete_photo') == '1':
+            if person.image_path:
+                old_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), person.image_path)
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                person.image_path = None
+        
         # Handle profile photo upload
         if 'profile_photo' in request.files:
             file = request.files['profile_photo']
@@ -691,8 +688,8 @@ def edit_person(person_id):
                     # Create upload directory if it doesn't exist
                     os.makedirs(os.path.dirname(upload_path), exist_ok=True)
                     
-                    # Resize and save image uniformly
-                    resize_and_save_image(file, upload_path)
+                    # Resize and save image to 256x256 pixels
+                    resize_and_save_image(file, upload_path, target_size=(256, 256))
                     person.image_path = filename
         
         db.session.commit()

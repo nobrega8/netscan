@@ -41,8 +41,16 @@
                                accept="image/*" onchange="previewImage(this)">
                         <div class="form-text">
                             Supported formats: PNG, JPG, JPEG, GIF, BMP, WebP. 
-                            Images will be automatically resized to 200x200 pixels.
+                            Images will be automatically resized to 256x256 pixels.
                         </div>
+                        {% if person.image_path %}
+                        <div class="mt-2">
+                            <label class="form-check-label" for="delete_photo">
+                                <input type="checkbox" class="form-check-input" id="delete_photo" name="delete_photo" value="1">
+                                Delete current profile photo
+                            </label>
+                        </div>
+                        {% endif %}
                     </div>
                     
                     <div class="mb-3">
