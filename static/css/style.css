@@ -1,0 +1,180 @@
+/* Custom styles for NetScan */
+
+body {
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: box-shadow 0.15s ease-in-out;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+    color: #495057;
+}
+
+.badge {
+    font-size: 0.75rem;
+}
+
+.btn-group-sm > .btn {
+    padding: 0.25rem 0.5rem;
+}
+
+/* Device status indicators */
+.status-online {
+    color: #28a745;
+}
+
+.status-offline {
+    color: #6c757d;
+}
+
+/* Timeline styles */
+.timeline {
+    position: relative;
+    padding-left: 3rem;
+}
+
+.timeline::before {
+    content: '';
+    position: absolute;
+    left: 1rem;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #dee2e6;
+}
+
+.timeline-item {
+    position: relative;
+    margin-bottom: 2rem;
+}
+
+.timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -2.5rem;
+    top: 0.5rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #007bff;
+    border: 2px solid #fff;
+}
+
+.timeline-item.offline::before {
+    background: #6c757d;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+    
+    .btn-group-sm > .btn {
+        padding: 0.125rem 0.25rem;
+    }
+}
+
+/* Loading animation */
+.fa-spin {
+    animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Custom alerts */
+.alert-custom {
+    border-left: 4px solid #007bff;
+    background-color: #f8f9fa;
+}
+
+/* Device icons */
+.device-icon {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    background-color: #e9ecef;
+    color: #495057;
+}
+
+/* Stats cards */
+.stats-card {
+    transition: transform 0.2s;
+}
+
+.stats-card:hover {
+    transform: translateY(-2px);
+}
+
+/* NetSpeed specific styles */
+.speed-metric h3 {
+    font-size: 2.5rem;
+    font-weight: bold;
+}
+
+.speed-metric {
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+#speedometer {
+    display: block;
+    margin: 0 auto;
+}
+
+#speed-test-container {
+    min-height: 400px;
+}
+
+.progress {
+    height: 10px;
+}
+
+#test-progress {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* Network chart container */
+#network-chart {
+    max-height: 300px;
+}
+
+/* Test history styles */
+#speed-history {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Animated pulse effect */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}

@@ -1,0 +1,45 @@
+/* Font Awesome Icons replacement using Unicode symbols and CSS */
+
+.fas, .fa {
+    font-style: normal;
+    font-variant: normal;
+    text-rendering: auto;
+    line-height: 1;
+}
+
+/* Common icons using Unicode */
+.fa-network-wired:before { content: "🌐"; }
+.fa-tachometer-alt:before { content: "⚡"; }
+.fa-wifi:before { content: "📶"; }
+.fa-chart-bar:before { content: "📊"; }
+.fa-chart-line:before { content: "📈"; }
+.fa-download:before { content: "⬇️"; }
+.fa-upload:before { content: "⬆️"; }
+.fa-clock:before { content: "🕒"; }
+.fa-check-circle:before { content: "✅"; }
+.fa-history:before { content: "🕐"; }
+.fa-play:before { content: "▶️"; }
+.fa-spinner:before { content: "⚪"; }
+.fa-circle:before { content: "●"; }
+.fa-device:before { content: "📱"; }
+
+/* Size classes */
+.fa-2x { 
+    font-size: 2em; 
+    vertical-align: middle;
+}
+
+/* Spinning animation */
+.fa-spin {
+    animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Margin classes */
+.me-1 { margin-right: 0.25rem; }
+.me-2 { margin-right: 0.5rem; }
+.mb-2 { margin-bottom: 0.5rem; }

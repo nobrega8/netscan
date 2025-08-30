@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}NetSpeed - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-tachometer-alt me-2"></i>Network Speed Test</h1>
+</div>
+
+<div class="row">
+    <!-- Speed Test Card -->
+    <div class="col-lg-8 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0"><i class="fas fa-wifi me-2"></i>Internet Speed Test</h5>
+            </div>
+            <div class="card-body text-center">
+                <div id="speed-test-container">
+                    <div id="speed-gauge" class="mb-4">
+                        <canvas id="speedometer" width="300" height="200"></canvas>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <div class="speed-metric">
+                                <h3 id="download-speed" class="text-primary mb-0">--</h3>
+                                <small class="text-muted">Download (Mbps)</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="speed-metric">
+                                <h3 id="upload-speed" class="text-success mb-0">--</h3>
+                                <small class="text-muted">Upload (Mbps)</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="speed-metric">
+                                <h3 id="ping-time" class="text-warning mb-0">--</h3>
+                                <small class="text-muted">Ping (ms)</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button id="start-test-btn" class="btn btn-primary btn-lg">
+                        <i class="fas fa-play me-2"></i>Start Speed Test
+                    </button>
+                    
+                    <div id="test-progress" class="mt-3" style="display: none;">
+                        <div class="progress mb-2">
+                            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <small id="test-status" class="text-muted">Initializing...</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Statistics Card -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0"><i class="fas fa-chart-bar me-2"></i>Test History</h5>
+            </div>
+            <div class="card-body">
+                <div id="speed-history">
+                    <div class="text-center text-muted">
+                        <i class="fas fa-history fa-2x mb-2"></i>
+                        <p>No tests performed yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Real-time Charts -->
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <h5 class="card-title mb-0"><i class="fas fa-chart-line me-2"></i>Real-time Network Monitor</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="network-chart" width="800" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Network Statistics -->
+<div class="row">
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-download fa-2x text-primary mb-2"></i>
+                <h4 id="avg-download" class="text-primary">-- Mbps</h4>
+                <small class="text-muted">Average Download</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-upload fa-2x text-success mb-2"></i>
+                <h4 id="avg-upload" class="text-success">-- Mbps</h4>
+                <small class="text-muted">Average Upload</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                <h4 id="avg-ping" class="text-warning">-- ms</h4>
+                <small class="text-muted">Average Ping</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card">
+            <div class="card-body text-center">
+                <i class="fas fa-check-circle fa-2x text-info mb-2"></i>
+                <h4 id="test-count" class="text-info">0</h4>
+                <small class="text-muted">Tests Run</small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/chart-local.js') }}"></script>
+<script src="{{ url_for('static', filename='js/netspeed.js') }}"></script>
+{% endblock %}

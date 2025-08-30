@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}{{ device.hostname or 'Device' }} - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>
+        <i class="fas fa-{{ device.icon or 'device' }} me-2"></i>
+        {{ device.hostname or 'Unknown Device' }}
+    </h2>
+    <div>
+        <a href="{{ url_for('edit_device', device_id=device.id) }}" class="btn btn-primary">
+            <i class="fas fa-edit me-2"></i>Edit
+        </a>
+        <a href="{{ url_for('devices') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Device Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <td><strong>Status:</strong></td>
+                        <td>
+                            {% if device.is_online %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-circle me-1"></i>Online
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="fas fa-circle me-1"></i>Offline
+                                </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>IP Address:</strong></td>
+                        <td><code>{{ device.ip_address }}</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>MAC Address:</strong></td>
+                        <td><code>{{ device.mac_address }}</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Brand:</strong></td>
+                        <td>{{ device.brand or '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Model:</strong></td>
+                        <td>{{ device.model or '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Owner:</strong></td>
+                        <td>
+                            {% if device.owner %}
+                                <a href="{{ url_for('person_detail', person_id=device.owner.id) }}">
+                                    {{ device.owner.name }}
+                                </a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>First Seen:</strong></td>
+                        <td>{{ device.first_seen.strftime('%Y-%m-%d %H:%M') if device.first_seen else '-' }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Last Seen:</strong></td>
+                        <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
+                    </tr>
+                </table>
+                
+                {% if device.open_ports %}
+                    <h6>Open Ports:</h6>
+                    {% set ports = device.open_ports | from_json %}
+                    {% for port in ports %}
+                        <span class="badge bg-info me-1">{{ port }}</span>
+                    {% endfor %}
+                {% endif %}
+                
+                {% if device.merged_devices %}
+                    <h6 class="mt-3">Merged Devices:</h6>
+                    <p class="text-muted">This device represents multiple MAC addresses:</p>
+                    {% set merged = device.merged_devices | from_json %}
+                    {% for mac in merged %}
+                        <code class="me-2">{{ mac }}</code>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5>Recent Activity</h5>
+            </div>
+            <div class="card-body">
+                {% if scans %}
+                    <div class="timeline">
+                        {% for scan in scans[:10] %}
+                            <div class="timeline-item {% if not scan.is_online %}offline{% endif %}">
+                                <div class="d-flex justify-content-between">
+                                    <div>
+                                        {% if scan.is_online %}
+                                            <strong class="text-success">Online</strong>
+                                        {% else %}
+                                            <strong class="text-muted">Offline</strong>
+                                        {% endif %}
+                                        {% if scan.ip_address %}
+                                            - {{ scan.ip_address }}
+                                        {% endif %}
+                                    </div>
+                                    <small class="text-muted">
+                                        {{ scan.timestamp.strftime('%m/%d %H:%M') }}
+                                    </small>
+                                </div>
+                                {% if scan.open_ports %}
+                                    {% set ports = scan.open_ports | from_json %}
+                                    <div class="mt-1">
+                                        {% for port in ports[:5] %}
+                                            <span class="badge bg-light text-dark">{{ port }}</span>
+                                        {% endfor %}
+                                        {% if ports | length > 5 %}
+                                            <span class="badge bg-secondary">+{{ ports | length - 5 }}</span>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No activity recorded yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

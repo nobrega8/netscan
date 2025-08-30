@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}{{ person.name }} - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>
+        <i class="fas fa-user me-2"></i>{{ person.name }}
+    </h2>
+    <a href="{{ url_for('people') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Person Information</h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <td><strong>Name:</strong></td>
+                        <td>{{ person.name }}</td>
+                    </tr>
+                    {% if person.email %}
+                    <tr>
+                        <td><strong>Email:</strong></td>
+                        <td>{{ person.email }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td><strong>Devices:</strong></td>
+                        <td>{{ devices | length }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Member Since:</strong></td>
+                        <td>{{ person.created_at.strftime('%Y-%m-%d') if person.created_at else '-' }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5>Devices</h5>
+            </div>
+            <div class="card-body">
+                {% if devices %}
+                    {% for device in devices %}
+                        <div class="d-flex justify-content-between align-items-center mb-2 p-2 border-bottom">
+                            <div>
+                                <i class="fas fa-{{ device.icon or 'device' }} me-2"></i>
+                                <a href="{{ url_for('device_detail', device_id=device.id) }}">
+                                    {{ device.hostname or device.mac_address[:8] }}
+                                </a>
+                                {% if device.is_online %}
+                                    <span class="badge bg-success ms-2">Online</span>
+                                {% else %}
+                                    <span class="badge bg-secondary ms-2">Offline</span>
+                                {% endif %}
+                            </div>
+                            <small class="text-muted">
+                                {{ device.ip_address }}
+                            </small>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No devices assigned to this person.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Activity Timeline</h5>
+            </div>
+            <div class="card-body">
+                {% if timeline %}
+                    <div class="timeline">
+                        {% for entry in timeline[:20] %}
+                            <div class="timeline-item {% if not entry.scan.is_online %}offline{% endif %}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <div class="d-flex align-items-center">
+                                            <i class="fas fa-{{ entry.device.icon or 'device' }} me-2"></i>
+                                            <strong>{{ entry.device.hostname or entry.device.mac_address[:8] }}</strong>
+                                            {% if entry.scan.is_online %}
+                                                <span class="badge bg-success ms-2">Online</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary ms-2">Offline</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="text-muted mt-1">
+                                            {% if entry.scan.ip_address %}
+                                                IP: {{ entry.scan.ip_address }}
+                                            {% endif %}
+                                            {% if entry.scan.open_ports %}
+                                                {% set ports = entry.scan.open_ports | from_json %}
+                                                {% if ports %}
+                                                    | Ports: 
+                                                    {% for port in ports[:3] %}
+                                                        {{ port }}{% if not loop.last %}, {% endif %}
+                                                    {% endfor %}
+                                                    {% if ports | length > 3 %}
+                                                        +{{ ports | length - 3 }} more
+                                                    {% endif %}
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">
+                                        {{ entry.timestamp.strftime('%m/%d %H:%M') }}
+                                    </small>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No activity recorded yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
