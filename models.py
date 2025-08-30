@@ -27,6 +27,7 @@ class Device(db.Model):
     netbios_name = db.Column(db.String(100))  # NetBIOS name
     workgroup = db.Column(db.String(100))     # Windows workgroup
     services = db.Column(db.Text)  # JSON string of detected services
+    category = db.Column(db.String(50))       # Device category (Phone, Computer, etc.)
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

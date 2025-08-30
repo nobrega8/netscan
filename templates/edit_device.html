@@ -55,8 +55,30 @@
                         </div>
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="person_id" class="form-label">Owner</label>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="category" class="form-label">Category</label>
+                                <select class="form-control" id="category" name="category">
+                                    <option value="">Select Category</option>
+                                    <option value="Phone" {% if device.category == 'Phone' %}selected{% endif %}>📱 Phone</option>
+                                    <option value="Computer" {% if device.category == 'Computer' %}selected{% endif %}>💻 Computer</option>
+                                    <option value="Network" {% if device.category == 'Network' %}selected{% endif %}>📡 Network</option>
+                                    <option value="Media" {% if device.category == 'Media' %}selected{% endif %}>📺 Media</option>
+                                    <option value="Security" {% if device.category == 'Security' %}selected{% endif %}>🔒 Security</option>
+                                    <option value="Camera" {% if device.category == 'Camera' %}selected{% endif %}>📷 Camera</option>
+                                    <option value="Smarthome" {% if device.category == 'Smarthome' %}selected{% endif %}>🏠 Smart Home</option>
+                                    <option value="Gaming" {% if device.category == 'Gaming' %}selected{% endif %}>🎮 Gaming</option>
+                                    <option value="Storage" {% if device.category == 'Storage' %}selected{% endif %}>💾 Storage</option>
+                                    <option value="IoT" {% if device.category == 'IoT' %}selected{% endif %}>🌐 IoT</option>
+                                    <option value="Server" {% if device.category == 'Server' %}selected{% endif %}>🖥️ Server</option>
+                                    <option value="Printer" {% if device.category == 'Printer' %}selected{% endif %}>🖨️ Printer</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="person_id" class="form-label">Owner</label>
                         <select class="form-control" id="person_id" name="person_id">
                             <option value="">No owner</option>
                             {% for person in people %}
@@ -66,6 +88,7 @@
                                 </option>
                             {% endfor %}
                         </select>
+                        </div>
                     </div>
                     
                     <div class="mb-3">

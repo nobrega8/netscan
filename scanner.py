@@ -61,6 +61,11 @@ class NetworkScanner:
                         devices_found.append(device_info)
                         self._update_device(device_info)
             
+            # Also scan localhost for comprehensive information
+            localhost_info = self.scan_localhost()
+            if localhost_info and localhost_info not in devices_found:
+                devices_found.append(localhost_info)
+            
             # After scanning, mark devices not seen as offline
             self.mark_offline_devices()
             
@@ -184,8 +189,12 @@ class NetworkScanner:
                 
         return open_ports
 
-    def _scan_ports(self, ip, ports='22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017'):
+    def _scan_ports(self, ip, ports='22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017', extended=False):
         """Legacy method for backward compatibility"""
+        if extended:
+            # Extended port list for localhost scanning
+            extended_ports = '22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017,5000,8000,9000,3000,5173,8081,8888,9090'
+            return self.scan_ports(ip, extended_ports)
         return self.scan_ports(ip, ports)
     
     def _update_device(self, device_info):
@@ -200,6 +209,20 @@ class NetworkScanner:
                 device.is_online = True
                 device.last_seen = device_info['timestamp']
                 device.open_ports = json.dumps(device_info['open_ports'])
+                
+                # Update additional fields if provided
+                if 'os_info' in device_info:
+                    device.os_info = device_info['os_info']
+                if 'vendor' in device_info:
+                    device.vendor = device_info['vendor']
+                if 'device_type' in device_info:
+                    device.device_type = device_info['device_type']
+                if 'os_family' in device_info:
+                    device.os_family = device_info['os_family']
+                if 'services' in device_info:
+                    device.services = device_info['services']
+                if 'category' in device_info and not device.category:  # Only set if not already set
+                    device.category = device_info['category']
             else:
                 # Create new device
                 device = Device(
@@ -209,7 +232,13 @@ class NetworkScanner:
                     is_online=True,
                     last_seen=device_info['timestamp'],
                     first_seen=device_info['timestamp'],
-                    open_ports=json.dumps(device_info['open_ports'])
+                    open_ports=json.dumps(device_info['open_ports']),
+                    os_info=device_info.get('os_info'),
+                    vendor=device_info.get('vendor'),
+                    device_type=device_info.get('device_type'),
+                    os_family=device_info.get('os_family'),
+                    services=device_info.get('services'),
+                    category=device_info.get('category')
                 )
                 db.session.add(device)
             
@@ -367,4 +396,110 @@ class NetworkScanner:
             db.session.add(scan)
         
         db.session.commit()
+    
+    def scan_localhost(self):
+        """Scan the localhost to gather information about the system itself"""
+        import platform
+        try:
+            import psutil
+            PSUTIL_AVAILABLE = True
+        except ImportError:
+            PSUTIL_AVAILABLE = False
+        import socket
+        import uuid
+        import subprocess
+        import os
+        
+        try:
+            # Get local IP address
+            local_ip = socket.gethostbyname(socket.gethostname())
+            
+            # Alternative method if above doesn't work
+            if local_ip.startswith('127.'):
+                # Connect to external host to get actual local IP
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                try:
+                    s.connect(('8.8.8.8', 80))
+                    local_ip = s.getsockname()[0]
+                except:
+                    pass
+                finally:
+                    s.close()
+            
+            # Get MAC address of primary network interface
+            mac_address = None
+            try:
+                # Get MAC address
+                mac = ':'.join(['{:02x}'.format((uuid.getnode() >> elements) & 0xff) for elements in range(0,2*6,2)][::-1])
+                mac_address = mac.lower()
+            except:
+                pass
+            
+            # Get hostname
+            hostname = socket.gethostname()
+            
+            # Get OS information
+            os_info = f"{platform.system()} {platform.release()}"
+            
+            # Get detailed system info
+            try:
+                if platform.system().lower() == 'linux':
+                    # Try to get distribution info
+                    result = subprocess.run(['lsb_release', '-ds'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        os_info = result.stdout.strip()
+            except:
+                pass
+            
+            # Scan open ports on localhost
+            open_ports = self._scan_ports(local_ip, extended=True)
+            
+            # Get system services information
+            services = []
+            for port in open_ports[:10]:  # Limit to first 10 ports
+                service_info = self._get_service_info(local_ip, port)
+                if service_info:
+                    services.append(service_info)
+            
+            # Get vendor information (simplified)
+            vendor = "Unknown"
+            device_type = "Server"
+            
+            # Try to determine if it's a known system type
+            if 'raspberry' in hostname.lower() or 'pi' in hostname.lower():
+                vendor = "Raspberry Pi Foundation"
+                device_type = "Computer"
+            elif platform.system().lower() == 'linux':
+                device_type = "Computer"
+            elif platform.system().lower() == 'windows':
+                device_type = "Computer"
+            elif platform.system().lower() == 'darwin':
+                vendor = "Apple"
+                device_type = "Computer"
+            
+            # Create or update localhost device
+            device_info = {
+                'ip_address': local_ip,
+                'hostname': hostname,
+                'mac_address': mac_address,
+                'open_ports': open_ports,
+                'is_online': True,
+                'os_info': os_info,
+                'vendor': vendor,
+                'device_type': device_type,
+                'os_family': platform.system(),
+                'services': json.dumps(services) if services else None,
+                'category': 'Server',  # Default category for localhost
+                'timestamp': datetime.utcnow()
+            }
+            
+            # Update device in database
+            if mac_address:
+                self._update_device(device_info)
+                return device_info
+            
+        except Exception as e:
+            print(f"Error scanning localhost: {e}")
+            
+        return None
         print(f"Marked {len(devices)} devices as offline")

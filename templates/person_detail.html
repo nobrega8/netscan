@@ -58,7 +58,15 @@
                             <div>
                                 <i class="fas fa-{{ device.icon or 'device' }} me-2"></i>
                                 <a href="{{ url_for('device_detail', device_id=device.id) }}">
-                                    {{ device.hostname or device.mac_address[:8] }}
+                                    {% if device.brand and device.model %}
+                                        {{ device.brand }} {{ device.model }}
+                                    {% elif device.brand %}
+                                        {{ device.brand }}
+                                    {% elif device.hostname %}
+                                        {{ device.hostname }}
+                                    {% else %}
+                                        {{ device.mac_address[:8] }}
+                                    {% endif %}
                                 </a>
                                 {% if device.is_online %}
                                     <span class="badge bg-success ms-2">Online</span>
@@ -92,7 +100,17 @@
                                     <div>
                                         <div class="d-flex align-items-center">
                                             <i class="fas fa-{{ entry.device.icon or 'device' }} me-2"></i>
-                                            <strong>{{ entry.device.hostname or entry.device.mac_address[:8] }}</strong>
+                                            <strong>
+                                                {% if entry.device.brand and entry.device.model %}
+                                                    {{ entry.device.brand }} {{ entry.device.model }}
+                                                {% elif entry.device.brand %}
+                                                    {{ entry.device.brand }}
+                                                {% elif entry.device.hostname %}
+                                                    {{ entry.device.hostname }}
+                                                {% else %}
+                                                    {{ entry.device.mac_address[:8] }}
+                                                {% endif %}
+                                            </strong>
                                             {% if entry.scan.is_online %}
                                                 <span class="badge bg-success ms-2">Online</span>
                                             {% else %}

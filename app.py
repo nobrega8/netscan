@@ -151,6 +151,7 @@ def edit_device(device_id):
         device.brand = request.form.get('brand')
         device.model = request.form.get('model')
         device.icon = request.form.get('icon', 'device')
+        device.category = request.form.get('category')
         
         person_id = request.form.get('person_id')
         if person_id:
@@ -300,6 +301,12 @@ def stats():
         func.count(Device.id).label('device_count')
     ).join(Device).group_by(Person.id).order_by(desc('device_count')).limit(10).all()
     
+    # Category leaderboard
+    category_leaderboard = db.session.query(
+        Device.category,
+        func.count(Device.id).label('device_count')
+    ).filter(Device.category.isnot(None), Device.category != '').group_by(Device.category).order_by(desc('device_count')).limit(10).all()
+    
     # Calculate average ports per device manually for SQLite compatibility
     devices_with_ports = Device.query.filter(Device.open_ports.isnot(None)).all()
     total_ports = 0
@@ -330,6 +337,7 @@ def stats():
                          scan_leaderboard=scan_leaderboard,
                          brand_leaderboard=brand_leaderboard,
                          user_leaderboard=user_leaderboard,
+                         category_leaderboard=category_leaderboard,
                          overall_stats=overall_stats)
     from models import Device, Person, Scan
     

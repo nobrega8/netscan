@@ -46,7 +46,7 @@
 <!-- Leaderboards -->
 <div class="row">
     <!-- Scan Leaderboard -->
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card">
             <div class="card-header">
                 <h5><i class="fas fa-trophy me-2 text-warning"></i>Most Scanned Devices</h5>
@@ -98,7 +98,7 @@
     </div>
 
     <!-- Brand Leaderboard -->
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card">
             <div class="card-header">
                 <h5><i class="fas fa-industry me-2 text-info"></i>Most Common Brands</h5>
@@ -143,9 +143,11 @@
             </div>
         </div>
     </div>
+</div>
 
+<div class="row mt-4">
     <!-- User Leaderboard -->
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card">
             <div class="card-header">
                 <h5><i class="fas fa-users me-2 text-success"></i>Users with Most Devices</h5>
@@ -193,6 +195,67 @@
                     </div>
                 {% else %}
                     <p class="text-muted">No user data available yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Leaderboard -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-tags me-2 text-info"></i>Most Common Categories</h5>
+            </div>
+            <div class="card-body">
+                {% if category_leaderboard %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Category</th>
+                                    <th>Devices</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for category in category_leaderboard %}
+                                    <tr>
+                                        <td>
+                                            {% if loop.index == 1 %}
+                                                <i class="fas fa-crown text-warning"></i>
+                                            {% elif loop.index == 2 %}
+                                                <i class="fas fa-medal text-secondary"></i>
+                                            {% elif loop.index == 3 %}
+                                                <i class="fas fa-medal text-warning"></i>
+                                            {% else %}
+                                                {{ loop.index }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if category.category == 'Phone' %}📱
+                                            {% elif category.category == 'Computer' %}💻
+                                            {% elif category.category == 'Network' %}📡
+                                            {% elif category.category == 'Media' %}📺
+                                            {% elif category.category == 'Security' %}🔒
+                                            {% elif category.category == 'Camera' %}📷
+                                            {% elif category.category == 'Smarthome' %}🏠
+                                            {% elif category.category == 'Gaming' %}🎮
+                                            {% elif category.category == 'Storage' %}💾
+                                            {% elif category.category == 'IoT' %}🌐
+                                            {% elif category.category == 'Server' %}🖥️
+                                            {% elif category.category == 'Printer' %}🖨️
+                                            {% endif %} {{ category.category }}
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info">{{ category.device_count }}</span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">No category data available yet.</p>
                 {% endif %}
             </div>
         </div>
