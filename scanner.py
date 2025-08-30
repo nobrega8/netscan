@@ -11,7 +11,12 @@ import time
 
 class NetworkScanner:
     def __init__(self):
-        self.nm = nmap.PortScanner()
+        try:
+            self.nm = nmap.PortScanner()
+        except Exception as e:
+            # For migration purposes, allow scanner to be created without nmap
+            print(f"Warning: Could not initialize nmap scanner: {e}")
+            self.nm = None
         
     def get_network_range(self):
         """Auto-detect network range or use configured range"""
@@ -48,23 +53,45 @@ class NetworkScanner:
         
         print(f"Scanning network: {network_range}")
         
+        devices_found = []
+        
         try:
-            # Ping scan to find live hosts
-            self.nm.scan(hosts=network_range, arguments='-sn')
+            # First, try ARP scan which is more reliable for local network discovery
+            arp_devices = self._scan_arp_table()
+            devices_found.extend(arp_devices)
+            print(f"Found {len(arp_devices)} devices via ARP")
             
-            devices_found = []
+            # Then do nmap scan if available
+            if self.nm:
+                try:
+                    # Use more aggressive ping scan arguments
+                    self.nm.scan(hosts=network_range, arguments='-sn -T4 --min-parallelism 100')
+                    
+                    for host in self.nm.all_hosts():
+                        if self.nm[host].state() == 'up':
+                            # Check if we already found this device via ARP
+                            existing = next((d for d in devices_found if d['ip_address'] == host), None)
+                            if not existing:
+                                device_info = self._get_device_info(host)
+                                if device_info:
+                                    devices_found.append(device_info)
+                    
+                    print(f"Found {len(devices_found)} total devices after nmap scan")
+                    
+                except Exception as e:
+                    print(f"nmap scan failed: {e}")
             
-            for host in self.nm.all_hosts():
-                if self.nm[host].state() == 'up':
-                    device_info = self._get_device_info(host)
-                    if device_info:
-                        devices_found.append(device_info)
-                        self._update_device(device_info)
+            # Process all found devices
+            for device_info in devices_found:
+                self._update_device(device_info)
             
             # Also scan localhost for comprehensive information
             localhost_info = self.scan_localhost()
-            if localhost_info and localhost_info not in devices_found:
-                devices_found.append(localhost_info)
+            if localhost_info:
+                # Check if localhost is already in the list
+                existing = next((d for d in devices_found if d['mac_address'] == localhost_info['mac_address']), None)
+                if not existing:
+                    devices_found.append(localhost_info)
             
             # After scanning, mark devices not seen as offline
             self.mark_offline_devices()
@@ -73,7 +100,7 @@ class NetworkScanner:
             
         except Exception as e:
             print(f"Error scanning network: {e}")
-            return []
+            return devices_found  # Return what we found so far
     
     def _get_device_info(self, ip):
         """Get detailed information about a device"""
@@ -142,6 +169,105 @@ class NetworkScanner:
             print(f"Error getting MAC for {ip}: {e}")
         
         return None
+    
+    def _scan_arp_table(self):
+        """Scan the ARP table for devices - more reliable for local network discovery"""
+        devices = []
+        try:
+            import subprocess
+            import re
+            
+            # Try different ARP commands based on the system
+            arp_commands = [
+                ['arp', '-a'],  # Most systems
+                ['ip', 'neigh', 'show'],  # Linux ip command
+                ['cat', '/proc/net/arp']  # Direct ARP table on Linux
+            ]
+            
+            for cmd in arp_commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0:
+                        devices.extend(self._parse_arp_output(result.stdout, cmd[0]))
+                        break
+                except:
+                    continue
+            
+            print(f"ARP scan found {len(devices)} devices")
+            return devices
+            
+        except Exception as e:
+            print(f"Error scanning ARP table: {e}")
+            return []
+    
+    def _parse_arp_output(self, output, command_type):
+        """Parse ARP output to extract device information"""
+        devices = []
+        
+        try:
+            lines = output.strip().split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if not line or 'incomplete' in line.lower():
+                    continue
+                
+                ip_address = None
+                mac_address = None
+                
+                if command_type == 'arp':
+                    # Parse "arp -a" output: hostname (192.168.1.1) at aa:bb:cc:dd:ee:ff
+                    match = re.search(r'\(([0-9.]+)\)\s+at\s+([a-fA-F0-9:]{17})', line)
+                    if match:
+                        ip_address = match.group(1)
+                        mac_address = match.group(2).lower()
+                
+                elif command_type == 'ip':
+                    # Parse "ip neigh show" output: 192.168.1.1 dev eth0 lladdr aa:bb:cc:dd:ee:ff REACHABLE
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        ip_address = parts[0]
+                        for i, part in enumerate(parts):
+                            if part == 'lladdr' and i + 1 < len(parts):
+                                mac_candidate = parts[i + 1]
+                                if re.match(r'^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$', mac_candidate):
+                                    mac_address = mac_candidate.lower()
+                                break
+                
+                elif command_type == 'cat':
+                    # Parse /proc/net/arp: IP address       HW type     Flags       HW address
+                    parts = line.split()
+                    if len(parts) >= 4 and re.match(r'^[0-9.]+$', parts[0]):
+                        ip_address = parts[0]
+                        mac_candidate = parts[3]
+                        if re.match(r'^([a-fA-F0-9]{2}:){5}[a-fA-F0-9]{2}$', mac_candidate):
+                            mac_address = mac_candidate.lower()
+                
+                if ip_address and mac_address and mac_address != '00:00:00:00:00:00':
+                    # Validate IP format
+                    if re.match(r'^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$', ip_address):
+                        device_info = {
+                            'ip_address': ip_address,
+                            'mac_address': mac_address,
+                            'hostname': self._get_hostname(ip_address),
+                            'open_ports': [],
+                            'is_online': True,
+                            'timestamp': datetime.utcnow()
+                        }
+                        devices.append(device_info)
+        
+        except Exception as e:
+            print(f"Error parsing ARP output: {e}")
+        
+        return devices
+    
+    def _get_hostname(self, ip):
+        """Get hostname for an IP address"""
+        try:
+            hostname = socket.gethostbyaddr(ip)[0]
+            return hostname
+        except:
+            return None
     
     def scan_ports(self, ip, ports='22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017'):
         """Scan common ports on a device (public method)"""
@@ -277,23 +403,118 @@ class NetworkScanner:
                     oui = OUI(prefix=oui_prefix, manufacturer=manufacturer)
                     db.session.add(oui)
                     db.session.commit()
+                    print(f"Added OUI: {oui_prefix} -> {manufacturer}")
                     
         except Exception as e:
             print(f"Error updating OUI: {e}")
     
     def _lookup_oui(self, oui_prefix):
-        """Lookup manufacturer from OUI prefix (simplified)"""
-        # This is a simplified version - in a real implementation,
-        # you'd download and parse the IEEE OUI database
+        """Lookup manufacturer from OUI prefix (enhanced with more manufacturers)"""
+        # Enhanced OUI database with more common manufacturers
         common_ouis = {
-            '001122': 'Cisco Systems',
-            '000C29': 'VMware',
-            '001A2B': 'Apple',
-            '000039': 'Toshiba',
-            '00E04C': 'Realtek',
-            '001B44': 'NETGEAR'
+            # Major manufacturers
+            '00:1A:2B': 'Apple',
+            '00:03:93': 'Apple',
+            'AC:DE:48': 'Apple',
+            'B8:E8:56': 'Apple',
+            'F0:18:98': 'Apple',
+            'A4:5E:60': 'Apple',
+            '4C:32:75': 'Apple',
+            '78:CA:39': 'Apple',
+            'BC:52:B7': 'Apple',
+            
+            # Cisco Systems
+            '00:11:22': 'Cisco Systems',
+            '00:0C:CE': 'Cisco Systems',
+            '00:1E:F7': 'Cisco Systems',
+            '00:26:98': 'Cisco Systems',
+            
+            # Samsung
+            '00:1E:B2': 'Samsung Electronics',
+            'E8:50:8B': 'Samsung Electronics',
+            '34:23:87': 'Samsung Electronics',
+            '00:12:FB': 'Samsung Electronics',
+            'DC:71:96': 'Samsung Electronics',
+            
+            # Google/Nest
+            '44:07:0B': 'Google',
+            'AC:63:BE': 'Google',
+            'F4:F5:D8': 'Google',
+            
+            # Xiaomi
+            '34:CE:00': 'Xiaomi',
+            '50:8F:4C': 'Xiaomi',
+            '78:11:DC': 'Xiaomi',
+            
+            # VMware
+            '00:0C:29': 'VMware',
+            '00:50:56': 'VMware',
+            
+            # Raspberry Pi
+            'B8:27:EB': 'Raspberry Pi Foundation',
+            'DC:A6:32': 'Raspberry Pi Foundation',
+            'E4:5F:01': 'Raspberry Pi Foundation',
+            
+            # Intel
+            '00:1B:21': 'Intel Corporation',
+            '3C:97:0E': 'Intel Corporation',
+            '00:90:27': 'Intel Corporation',
+            
+            # TP-Link
+            'E8:DE:27': 'TP-Link Technologies',
+            'A0:F3:C1': 'TP-Link Technologies',
+            'AC:84:C6': 'TP-Link Technologies',
+            
+            # NETGEAR
+            '00:1B:44': 'NETGEAR',
+            '28:C6:8E': 'NETGEAR',
+            'A0:04:60': 'NETGEAR',
+            
+            # D-Link
+            '00:1B:11': 'D-Link Corporation',
+            '14:D6:4D': 'D-Link Corporation',
+            
+            # Realtek
+            '00:E0:4C': 'Realtek Semiconductor',
+            '52:54:00': 'Realtek Semiconductor',
+            
+            # Amazon
+            '44:65:0D': 'Amazon Technologies',
+            'F0:27:2D': 'Amazon Technologies',
+            '68:37:E9': 'Amazon Technologies',
+            
+            # Microsoft
+            '00:12:5A': 'Microsoft Corporation',
+            '7C:1E:52': 'Microsoft Corporation',
+            
+            # Sonos
+            '00:0E:58': 'Sonos',
+            '5C:AA:FD': 'Sonos',
+            
+            # HP
+            '00:1F:29': 'Hewlett Packard Enterprise',
+            '70:5A:0F': 'Hewlett Packard Enterprise',
+            
+            # ASUS
+            '00:1D:60': 'ASUSTek Computer',
+            '2C:56:DC': 'ASUSTek Computer',
+            'AC:9E:17': 'ASUSTek Computer',
+            
+            # Philips
+            '00:17:88': 'Philips Electronics',
+            '00:0D:F4': 'Philips Electronics',
         }
-        return common_ouis.get(oui_prefix)
+        
+        # Remove colons and make uppercase for matching
+        clean_prefix = oui_prefix.replace(':', '').upper()
+        
+        # Try exact match first
+        for mac_pattern, manufacturer in common_ouis.items():
+            clean_pattern = mac_pattern.replace(':', '').upper()
+            if clean_prefix == clean_pattern:
+                return manufacturer
+        
+        return None
     
     def get_device_details(self, ip):
         """Get comprehensive device information including OS detection"""

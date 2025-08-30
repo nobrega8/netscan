@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from flask_migrate import Migrate
 from werkzeug.utils import secure_filename
 from models import db, Device, Person, Scan, OUI, Settings
 from scanner import NetworkScanner
@@ -32,6 +33,7 @@ app.config.from_object(Config)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 
 db.init_app(app)
+migrate = Migrate(app, db)
 scanner = NetworkScanner()
 
 # Template filter for JSON parsing
@@ -114,12 +116,22 @@ def resize_and_save_image(file, upload_path, target_size=(200, 200)):
         file.seek(0)  # Reset file pointer
         file.save(upload_path)
 
-# Create tables on startup
-with app.app_context():
-    db.create_all()
+def ensure_sqlite_columns():
+    """
+    Auto-healing for SQLite databases - moved to db_autoheal.py module
+    This function is kept for backward compatibility but delegates to the separate module.
+    """
+    from db_autoheal import ensure_sqlite_columns as ensure_columns
+    ensure_columns()
+
+# Database initialization is now handled manually or via auto-healing
+# Auto-healing functionality is available via the ensure_sqlite_columns function
 
 @app.route('/')
 def dashboard():
+    # Ensure database schema is up-to-date on first access
+    ensure_sqlite_columns()
+    
     devices = Device.query.all()
     online_devices = Device.query.filter_by(is_online=True).count()
     total_devices = Device.query.count()
@@ -266,10 +278,27 @@ def oui_lookup():
 
 @app.route('/timeline')
 def timeline():
-    # Get devices with their scan history for timeline view
-    devices = Device.query.all()
-    scans = Scan.query.order_by(Scan.timestamp.desc()).limit(1000).all()
-    return render_template('timeline.html', devices=devices, scans=scans)
+    try:
+        # Get devices with their scan history for timeline view
+        devices = []
+        scans = []
+        
+        try:
+            devices = Device.query.all()
+        except Exception as e:
+            print(f"Error getting devices for timeline: {e}")
+            
+        try:
+            scans = Scan.query.order_by(Scan.timestamp.desc()).limit(1000).all()
+        except Exception as e:
+            print(f"Error getting scans for timeline: {e}")
+            
+        return render_template('timeline.html', devices=devices, scans=scans)
+        
+    except Exception as e:
+        print(f"Error in timeline page: {e}")
+        # Return empty timeline in case of error
+        return render_template('timeline.html', devices=[], scans=[])
 
 @app.route('/netspeed')
 def netspeed():
@@ -278,67 +307,137 @@ def netspeed():
 @app.route('/stats')
 def stats():
     """Statistics page with leaderboards"""
-    from sqlalchemy import func, desc
-    
-    # Number of scans per device (leaderboard)
-    scan_leaderboard = db.session.query(
-        Device.hostname,
-        Device.ip_address,
-        Device.mac_address,
-        func.count(Scan.id).label('scan_count')
-    ).join(Scan).group_by(Device.id).order_by(desc('scan_count')).limit(10).all()
-    
-    # Most frequent brands (leaderboard)
-    brand_leaderboard = db.session.query(
-        Device.brand,
-        func.count(Device.id).label('device_count')
-    ).filter(Device.brand.isnot(None), Device.brand != '').group_by(Device.brand).order_by(desc('device_count')).limit(10).all()
-    
-    # Users with most devices (leaderboard)
-    user_leaderboard = db.session.query(
-        Person.name,
-        Person.email,
-        func.count(Device.id).label('device_count')
-    ).join(Device).group_by(Person.id).order_by(desc('device_count')).limit(10).all()
-    
-    # Category leaderboard
-    category_leaderboard = db.session.query(
-        Device.category,
-        func.count(Device.id).label('device_count')
-    ).filter(Device.category.isnot(None), Device.category != '').group_by(Device.category).order_by(desc('device_count')).limit(10).all()
-    
-    # Calculate average ports per device manually for SQLite compatibility
-    devices_with_ports = Device.query.filter(Device.open_ports.isnot(None)).all()
-    total_ports = 0
-    device_count = 0
-    for device in devices_with_ports:
+    try:
+        from sqlalchemy import func, desc
+        
+        # Number of scans per device (leaderboard) - with error handling
+        scan_leaderboard = []
         try:
-            ports = json.loads(device.open_ports or '[]')
-            total_ports += len(ports)
-            device_count += 1
+            scan_leaderboard = db.session.query(
+                Device.hostname,
+                Device.ip_address,
+                Device.mac_address,
+                func.count(Scan.id).label('scan_count')
+            ).join(Scan, Device.id == Scan.device_id).group_by(Device.id).order_by(desc('scan_count')).limit(10).all()
+        except Exception as e:
+            print(f"Error getting scan leaderboard: {e}")
+        
+        # Most frequent brands (leaderboard) - with error handling
+        brand_leaderboard = []
+        try:
+            brand_leaderboard = db.session.query(
+                Device.brand,
+                func.count(Device.id).label('device_count')
+            ).filter(Device.brand.isnot(None), Device.brand != '').group_by(Device.brand).order_by(desc('device_count')).limit(10).all()
+        except Exception as e:
+            print(f"Error getting brand leaderboard: {e}")
+        
+        # Users with most devices (leaderboard) - with error handling
+        user_leaderboard = []
+        try:
+            user_leaderboard = db.session.query(
+                Person.name,
+                Person.email,
+                func.count(Device.id).label('device_count')
+            ).join(Device, Person.id == Device.person_id).group_by(Person.id).order_by(desc('device_count')).limit(10).all()
+        except Exception as e:
+            print(f"Error getting user leaderboard: {e}")
+        
+        # Category leaderboard - with error handling
+        category_leaderboard = []
+        try:
+            category_leaderboard = db.session.query(
+                Device.category,
+                func.count(Device.id).label('device_count')
+            ).filter(Device.category.isnot(None), Device.category != '').group_by(Device.category).order_by(desc('device_count')).limit(10).all()
+        except Exception as e:
+            print(f"Error getting category leaderboard: {e}")
+        
+        # Calculate average ports per device manually for SQLite compatibility
+        avg_ports = 0
+        try:
+            devices_with_ports = Device.query.filter(Device.open_ports.isnot(None)).all()
+            total_ports = 0
+            device_count = 0
+            for device in devices_with_ports:
+                try:
+                    ports = json.loads(device.open_ports or '[]')
+                    total_ports += len(ports)
+                    device_count += 1
+                except:
+                    continue
+            
+            avg_ports = total_ports / device_count if device_count > 0 else 0
+        except Exception as e:
+            print(f"Error calculating average ports: {e}")
+        
+        # Overall statistics - with error handling for each query
+        overall_stats = {}
+        try:
+            overall_stats['total_devices'] = Device.query.count()
         except:
-            continue
+            overall_stats['total_devices'] = 0
+            
+        try:
+            overall_stats['online_devices'] = Device.query.filter_by(is_online=True).count()
+        except:
+            overall_stats['online_devices'] = 0
+            
+        try:
+            overall_stats['offline_devices'] = Device.query.filter_by(is_online=False).count()
+        except:
+            overall_stats['offline_devices'] = 0
+            
+        try:
+            overall_stats['total_people'] = Person.query.count()
+        except:
+            overall_stats['total_people'] = 0
+            
+        try:
+            overall_stats['total_scans'] = Scan.query.count()
+        except:
+            overall_stats['total_scans'] = 0
+            
+        try:
+            overall_stats['devices_with_owners'] = Device.query.filter(Device.person_id.isnot(None)).count()
+        except:
+            overall_stats['devices_with_owners'] = 0
+            
+        try:
+            overall_stats['unique_brands'] = db.session.query(func.count(func.distinct(Device.brand))).filter(Device.brand.isnot(None), Device.brand != '').scalar() or 0
+        except:
+            overall_stats['unique_brands'] = 0
+            
+        overall_stats['average_ports_per_device'] = avg_ports
+        
+        return render_template('stats.html', 
+                             scan_leaderboard=scan_leaderboard,
+                             brand_leaderboard=brand_leaderboard,
+                             user_leaderboard=user_leaderboard,
+                             category_leaderboard=category_leaderboard,
+                             overall_stats=overall_stats)
     
-    avg_ports = total_ports / device_count if device_count > 0 else 0
-    
-    # Overall statistics
-    overall_stats = {
-        'total_devices': Device.query.count(),
-        'online_devices': Device.query.filter_by(is_online=True).count(),
-        'offline_devices': Device.query.filter_by(is_online=False).count(),
-        'total_people': Person.query.count(),
-        'total_scans': Scan.query.count(),
-        'devices_with_owners': Device.query.filter(Device.person_id.isnot(None)).count(),
-        'unique_brands': db.session.query(func.count(func.distinct(Device.brand))).filter(Device.brand.isnot(None), Device.brand != '').scalar(),
-        'average_ports_per_device': avg_ports
-    }
-    
-    return render_template('stats.html', 
-                         scan_leaderboard=scan_leaderboard,
-                         brand_leaderboard=brand_leaderboard,
-                         user_leaderboard=user_leaderboard,
-                         category_leaderboard=category_leaderboard,
-                         overall_stats=overall_stats)
+    except Exception as e:
+        print(f"Error in stats page: {e}")
+        # Return minimal stats page in case of error
+        return render_template('stats.html', 
+                             scan_leaderboard=[],
+                             brand_leaderboard=[],
+                             user_leaderboard=[],
+                             category_leaderboard=[],
+                             overall_stats={
+                                 'total_devices': 0,
+                                 'online_devices': 0,
+                                 'offline_devices': 0,
+                                 'total_people': 0,
+                                 'total_scans': 0,
+                                 'devices_with_owners': 0,
+                                 'unique_brands': 0,
+                                 'average_ports_per_device': 0
+                             })
+
+@app.route('/settings')
+def settings():
     from models import Device, Person, Scan
     
     stats = {
@@ -409,9 +508,27 @@ def update_system():
                               capture_output=True, text=True, timeout=30)
         
         if result.returncode == 0:
-            # Restart the service (this is a simple example)
-            # In production, you might want to use a proper service manager
-            return jsonify({'success': True, 'message': 'Update completed successfully'})
+            # Try to restart the service using systemctl
+            try:
+                # First try with sudo
+                restart_result = subprocess.run(['sudo', 'systemctl', 'restart', 'netscan'], 
+                                             capture_output=True, text=True, timeout=10)
+                if restart_result.returncode == 0:
+                    return jsonify({'success': True, 'message': 'Update completed successfully. Service restarted.'})
+                else:
+                    # If sudo systemctl fails, try without sudo (in case service is running as current user)
+                    restart_result = subprocess.run(['systemctl', '--user', 'restart', 'netscan'], 
+                                                 capture_output=True, text=True, timeout=10)
+                    if restart_result.returncode == 0:
+                        return jsonify({'success': True, 'message': 'Update completed successfully. Service restarted.'})
+                    else:
+                        # If systemctl restart fails, just report success for the update but mention restart issue
+                        return jsonify({'success': True, 'message': 'Update completed successfully. Please manually restart the service.'})
+            except subprocess.TimeoutExpired:
+                return jsonify({'success': True, 'message': 'Update completed successfully. Service restart timed out - please restart manually.'})
+            except Exception as restart_error:
+                # Update was successful but restart failed
+                return jsonify({'success': True, 'message': f'Update completed successfully. Could not restart service: {str(restart_error)}'})
         else:
             return jsonify({'success': False, 'error': result.stderr})
             
@@ -425,29 +542,73 @@ def update_oui():
     try:
         import requests
         
-        # Download OUI database from IEEE
-        response = requests.get('http://standards-oui.ieee.org/oui/oui.txt', timeout=30)
-        response.raise_for_status()
+        # Try multiple OUI database sources
+        oui_sources = [
+            'https://standards.oui.ieee.org/oui/oui.txt',
+            'http://standards-oui.ieee.org/oui/oui.txt',
+            'https://raw.githubusercontent.com/wireshark/wireshark/master/manuf',  # Alternative format
+        ]
+        
+        oui_data = None
+        source_used = None
+        
+        for source in oui_sources:
+            try:
+                response = requests.get(source, timeout=30)
+                response.raise_for_status()
+                oui_data = response.text
+                source_used = source
+                break
+            except Exception as e:
+                print(f"Failed to get OUI data from {source}: {e}")
+                continue
+        
+        if not oui_data:
+            # Fallback: populate with local OUI database
+            try:
+                from populate_oui import populate_oui_database
+                count = populate_oui_database()
+                return jsonify({'success': True, 'count': count, 'source': 'local_database'})
+            except Exception as fallback_error:
+                return jsonify({'success': False, 'error': f'Could not fetch OUI data from any source and local fallback failed: {str(fallback_error)}'})
         
         # Clear existing OUI data
         OUI.query.delete()
         
         # Parse and insert new data
         count = 0
-        for line in response.text.split('\n'):
-            line = line.strip()
-            if '(hex)' in line:
-                parts = line.split('\t')
-                if len(parts) >= 2:
-                    prefix = parts[0].replace('(hex)', '').strip().replace('-', ':')[:8]
-                    manufacturer = parts[1].strip()
-                    
-                    oui = OUI(prefix=prefix, manufacturer=manufacturer)
-                    db.session.add(oui)
-                    count += 1
+        
+        if 'wireshark' in source_used:
+            # Parse Wireshark manuf format: AA:BB:CC\tManufacturer\tLong name
+            for line in oui_data.split('\n'):
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    parts = line.split('\t')
+                    if len(parts) >= 2:
+                        mac_prefix = parts[0].strip().replace(':', '').replace('-', '')[:6]
+                        manufacturer = parts[1].strip()
+                        
+                        if len(mac_prefix) == 6 and all(c in '0123456789ABCDEFabcdef' for c in mac_prefix):
+                            oui = OUI(prefix=mac_prefix.upper(), manufacturer=manufacturer)
+                            db.session.add(oui)
+                            count += 1
+        else:
+            # Parse IEEE format: AA-BB-CC (hex)\tManufacturer
+            for line in oui_data.split('\n'):
+                line = line.strip()
+                if '(hex)' in line:
+                    parts = line.split('\t')
+                    if len(parts) >= 2:
+                        prefix = parts[0].replace('(hex)', '').strip().replace('-', '').replace(':', '')
+                        manufacturer = parts[1].strip()
+                        
+                        if len(prefix) == 6 and all(c in '0123456789ABCDEFabcdef' for c in prefix):
+                            oui = OUI(prefix=prefix.upper(), manufacturer=manufacturer)
+                            db.session.add(oui)
+                            count += 1
         
         db.session.commit()
-        return jsonify({'success': True, 'count': count})
+        return jsonify({'success': True, 'count': count, 'source': source_used})
         
     except Exception as e:
         db.session.rollback()
