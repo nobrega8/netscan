@@ -78,23 +78,6 @@
                                 </div>
                             </div>
                         </td>
-                                    <i class="fas fa-circle me-1"></i>Offline
-                                </span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center">
-                                <i class="fas fa-{{ device.icon or 'device' }} me-2"></i>
-                                <div>
-                                    <strong>{{ device.hostname or 'Unknown Device' }}</strong>
-                                    {% if device.merged_devices %}
-                                        <br><small class="text-muted">
-                                            <i class="fas fa-link me-1"></i>Merged device
-                                        </small>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </td>
                         <td>{{ device.ip_address }}</td>
                         <td><code>{{ device.mac_address }}</code></td>
                         <td>
@@ -118,22 +101,16 @@
                             {% if device.open_ports %}
                                 {% set ports = device.open_ports | from_json %}
                                 {% for port in ports[:3] %}
-                                    <span class="badge bg-info">{{ port }}</span>
+                                    <span class="badge bg-secondary me-1">{{ port }}</span>
                                 {% endfor %}
                                 {% if ports | length > 3 %}
-                                    <span class="badge bg-secondary">+{{ ports | length - 3 }}</span>
+                                    <span class="badge bg-info">+{{ ports | length - 3 }}</span>
                                 {% endif %}
                             {% else %}
                                 -
                             {% endif %}
                         </td>
-                        <td>
-                            {% if device.last_seen %}
-                                {{ device.last_seen.strftime('%Y-%m-%d %H:%M') }}
-                            {% else %}
-                                Never
-                            {% endif %}
-                        </td>
+                        <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
                         <td>
                             <div class="btn-group btn-group-sm">
                                 <a href="{{ url_for('device_detail', device_id=device.id) }}" 
