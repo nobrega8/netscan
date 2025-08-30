@@ -126,7 +126,7 @@
                             <div class="mb-2">
                                 <span class="badge bg-info me-2">
                                     {{ port }} 
-                                    <small class="text-light">{{ get_service_name(port) }}</small>
+                                    <small class="text-light">{{ port | get_service_name }}</small>
                                 </span>
                                 {% if services.get(port|string) %}
                                     <small class="text-muted">
