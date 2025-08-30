@@ -89,6 +89,48 @@ body {
     max-width: 1280px;
 }
 
+/* Improved spacing */
+.mb-4 {
+    margin-bottom: 24px !important;
+}
+
+.mb-3 {
+    margin-bottom: 16px !important;
+}
+
+.mb-2 {
+    margin-bottom: 12px !important;
+}
+
+.mt-4 {
+    margin-top: 24px !important;
+}
+
+.mt-3 {
+    margin-top: 16px !important;
+}
+
+.mt-2 {
+    margin-top: 12px !important;
+}
+
+.p-3 {
+    padding: 16px !important;
+}
+
+.p-4 {
+    padding: 24px !important;
+}
+
+/* Consistent spacing for rows and columns */
+.row {
+    margin-bottom: 16px;
+}
+
+.row:last-child {
+    margin-bottom: 0;
+}
+
 /* GitHub-style cards */
 .card {
     border: 1px solid var(--color-border-default);
@@ -201,14 +243,46 @@ body {
 
 .bg-success {
     background-color: var(--color-success-fg) !important;
+    color: #ffffff !important;
 }
 
 .bg-secondary {
     background-color: var(--color-neutral-muted) !important;
+    color: #ffffff !important;
 }
 
 .bg-info {
     background-color: var(--color-accent-fg) !important;
+    color: #ffffff !important;
+}
+
+.bg-primary {
+    background-color: var(--color-accent-emphasis) !important;
+    color: #ffffff !important;
+}
+
+.bg-warning {
+    background-color: #bf8700 !important;
+    color: #ffffff !important;
+}
+
+[data-theme="dark"] .bg-warning {
+    background-color: #d29922 !important;
+}
+
+.bg-danger {
+    background-color: var(--color-danger-fg) !important;
+    color: #ffffff !important;
+}
+
+.bg-light {
+    background-color: var(--color-canvas-subtle) !important;
+    color: var(--color-fg-default) !important;
+    border: 1px solid var(--color-border-default);
+}
+
+.text-dark {
+    color: var(--color-fg-default) !important;
 }
 
 /* GitHub-style alerts */
@@ -217,28 +291,62 @@ body {
     border-radius: 6px;
     padding: 16px;
     margin-bottom: 16px;
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
 }
 
 .alert-info {
-    background-color: #ddf4ff;
-    border-color: #54aeff;
-    color: #0969da;
+    background-color: var(--color-canvas-subtle);
+    border-color: var(--color-accent-fg);
+    color: var(--color-accent-fg);
+}
+
+[data-theme="dark"] .alert-info {
+    background-color: rgba(47, 129, 247, 0.1);
+    border-color: var(--color-accent-fg);
+    color: var(--color-accent-fg);
 }
 
 .alert-warning {
-    background-color: #fff8c5;
-    border-color: #ffd33d;
-    color: #7d4e00;
+    background-color: var(--color-canvas-subtle);
+    border-color: #bf8700;
+    color: #bf8700;
+}
+
+[data-theme="dark"] .alert-warning {
+    background-color: rgba(191, 135, 0, 0.1);
+    border-color: #d29922;
+    color: #d29922;
 }
 
 .alert-success {
-    background-color: #dafbe1;
-    border-color: #2da44e;
-    color: #1a7f37;
+    background-color: var(--color-canvas-subtle);
+    border-color: var(--color-success-fg);
+    color: var(--color-success-fg);
+}
+
+[data-theme="dark"] .alert-success {
+    background-color: rgba(63, 185, 80, 0.1);
+    border-color: var(--color-success-fg);
+    color: var(--color-success-fg);
+}
+
+.alert-danger {
+    background-color: var(--color-canvas-subtle);
+    border-color: var(--color-danger-fg);
+    color: var(--color-danger-fg);
+}
+
+[data-theme="dark"] .alert-danger {
+    background-color: rgba(248, 81, 73, 0.1);
+    border-color: var(--color-danger-fg);
+    color: var(--color-danger-fg);
 }
 
 /* GitHub-style forms */
 .form-control {
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
     border: 1px solid var(--color-border-default);
     border-radius: 6px;
     font-size: 14px;
@@ -247,9 +355,33 @@ body {
 }
 
 .form-control:focus {
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
     border-color: var(--color-accent-fg);
     box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
     outline: none;
+}
+
+[data-theme="dark"] .form-control:focus {
+    box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.3);
+}
+
+.form-select {
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+}
+
+.form-select:focus {
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
+    border-color: var(--color-accent-fg);
+    box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.3);
+}
+
+[data-theme="dark"] .form-select:focus {
+    box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.3);
 }
 
 .form-label {
@@ -285,6 +417,8 @@ body {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
 /* Device status indicators */
 .status-online {
     color: var(--color-success-fg);
@@ -362,7 +496,7 @@ body {
     top: 0;
     bottom: 0;
     width: 2px;
-    background: #dee2e6;
+    background: var(--color-border-default);
 }
 
 .timeline-item {
@@ -378,12 +512,12 @@ body {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #007bff;
-    border: 2px solid #fff;
+    background: var(--color-accent-fg);
+    border: 2px solid var(--color-canvas-default);
 }
 
 .timeline-item.offline::before {
-    background: #6c757d;
+    background: var(--color-neutral-muted);
 }
 
 /* Responsive improvements */
@@ -421,8 +555,41 @@ body {
     align-items: center;
     justify-content: center;
     border-radius: 4px;
-    background-color: #e9ecef;
-    color: #495057;
+    background-color: var(--color-canvas-subtle);
+    color: var(--color-fg-default);
+    border: 1px solid var(--color-border-default);
+}
+
+/* Progress bars */
+.progress {
+    height: 10px;
+    background-color: var(--color-canvas-subtle);
+    border-radius: 6px;
+    border: 1px solid var(--color-border-default);
+}
+
+.progress-bar {
+    background-color: var(--color-accent-fg);
+}
+
+/* Dark mode improvements for buttons */
+[data-theme="dark"] .btn-secondary {
+    background-color: var(--color-canvas-subtle);
+    border-color: var(--color-border-default);
+    color: var(--color-fg-default);
+}
+
+[data-theme="dark"] .btn-secondary:hover {
+    background-color: var(--color-border-default);
+    border-color: var(--color-border-muted);
+    color: var(--color-fg-default);
+}
+
+/* Input groups */
+.input-group-text {
+    background-color: var(--color-canvas-subtle);
+    color: var(--color-fg-default);
+    border: 1px solid var(--color-border-default);
 }
 
 /* Enhanced stats cards with glassmorphism */
