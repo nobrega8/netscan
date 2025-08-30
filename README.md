@@ -30,7 +30,7 @@ pip3 install -r requirements.txt
 python3 app.py
 ```
 
-Access the web interface at: http://localhost:5000
+Access the web interface at: http://localhost:2530
 
 ### Raspberry Pi Service Installation
 
