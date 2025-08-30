@@ -2,6 +2,7 @@ import nmap
 import netifaces
 import socket
 import json
+import subprocess
 from datetime import datetime
 from models import Device, Scan, OUI, db
 import re
@@ -59,6 +60,9 @@ class NetworkScanner:
                     if device_info:
                         devices_found.append(device_info)
                         self._update_device(device_info)
+            
+            # After scanning, mark devices not seen as offline
+            self.mark_offline_devices()
             
             return devices_found
             
@@ -134,10 +138,16 @@ class NetworkScanner:
         
         return None
     
-    def _scan_ports(self, ip, ports='22,23,25,53,80,110,443,993,995'):
-        """Scan common ports on a device"""
+    def scan_ports(self, ip, ports='22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017'):
+        """Scan common ports on a device (public method)"""
         try:
-            self.nm.scan(ip, ports, arguments='-sS')
+            # Try SYN scan first (requires root)
+            try:
+                self.nm.scan(ip, ports, arguments='-sS')
+            except Exception:
+                # Fallback to TCP connect scan (no root required)
+                self.nm.scan(ip, ports, arguments='-sT')
+                
             open_ports = []
             
             if ip in self.nm.all_hosts():
@@ -151,7 +161,32 @@ class NetworkScanner:
             
         except Exception as e:
             print(f"Error scanning ports for {ip}: {e}")
-            return []
+            # Fallback to basic connectivity test
+            return self._basic_port_check(ip, ports.split(','))
+    
+    def _basic_port_check(self, ip, port_list):
+        """Basic port connectivity check using socket"""
+        import socket
+        open_ports = []
+        
+        for port_str in port_list:
+            try:
+                port = int(port_str.strip())
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(2)
+                result = sock.connect_ex((ip, port))
+                sock.close()
+                
+                if result == 0:
+                    open_ports.append(port)
+            except:
+                continue
+                
+        return open_ports
+
+    def _scan_ports(self, ip, ports='22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017'):
+        """Legacy method for backward compatibility"""
+        return self.scan_ports(ip, ports)
     
     def _update_device(self, device_info):
         """Update or create device in database"""
@@ -231,6 +266,84 @@ class NetworkScanner:
         }
         return common_ouis.get(oui_prefix)
     
+    def get_device_details(self, ip):
+        """Get comprehensive device information including OS detection"""
+        try:
+            device_info = {}
+            
+            # OS Detection using nmap
+            try:
+                self.nm.scan(ip, arguments='-O')
+                if ip in self.nm.all_hosts():
+                    host_info = self.nm[ip]
+                    
+                    # OS information
+                    if 'osmatch' in host_info:
+                        os_matches = host_info['osmatch']
+                        if os_matches:
+                            device_info['os_info'] = os_matches[0]['name']
+                            device_info['os_accuracy'] = os_matches[0]['accuracy']
+                    
+                    # Vendor information
+                    if 'vendor' in host_info:
+                        vendors = list(host_info['vendor'].values())
+                        if vendors:
+                            device_info['vendor'] = vendors[0]
+                    
+                    # Device type
+                    if 'osclass' in host_info:
+                        osclass = host_info['osclass']
+                        if osclass:
+                            device_info['device_type'] = osclass[0].get('type', 'Unknown')
+                            device_info['os_family'] = osclass[0].get('osfamily', 'Unknown')
+            except Exception as e:
+                print(f"OS detection failed for {ip}: {e}")
+            
+            # Try to get additional information through service detection
+            try:
+                # Service version detection
+                self.nm.scan(ip, arguments='-sV')
+                if ip in self.nm.all_hosts():
+                    host_info = self.nm[ip]
+                    services = {}
+                    
+                    for proto in host_info.all_protocols():
+                        ports = host_info[proto].keys()
+                        for port in ports:
+                            port_info = host_info[proto][port]
+                            if port_info['state'] == 'open':
+                                service_name = port_info.get('name', 'unknown')
+                                version = port_info.get('version', '')
+                                product = port_info.get('product', '')
+                                
+                                services[port] = {
+                                    'name': service_name,
+                                    'product': product,
+                                    'version': version
+                                }
+                    
+                    device_info['services'] = services
+            except Exception as e:
+                print(f"Service detection failed for {ip}: {e}")
+            
+            # Try to get NetBIOS information (Windows)
+            try:
+                result = subprocess.run(['nmblookup', '-A', ip], 
+                                      capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    lines = result.stdout.split('\n')
+                    for line in lines:
+                        if '<00>' in line and 'UNIQUE' in line:
+                            device_info['netbios_name'] = line.split()[0].strip()
+                        elif '<20>' in line and 'UNIQUE' in line:
+                            device_info['workgroup'] = line.split()[0].strip()
+            except Exception as e:
+                print(f"NetBIOS lookup failed for {ip}: {e}")
+            
+            return device_info
+            
+        except Exception as e:
+            print(f"Error getting device details for {ip}: {e}")
     def mark_offline_devices(self):
         """Mark devices as offline if not seen in recent scan"""
         from datetime import timedelta
@@ -244,5 +357,14 @@ class NetworkScanner:
         
         for device in devices:
             device.is_online = False
+            # Record offline scan
+            scan = Scan(
+                device_id=device.id,
+                ip_address=device.ip_address,
+                is_online=False,
+                timestamp=datetime.utcnow()
+            )
+            db.session.add(scan)
         
         db.session.commit()
+        print(f"Marked {len(devices)} devices as offline")

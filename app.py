@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
 from werkzeug.utils import secure_filename
-from models import db, Device, Person, Scan, OUI
+from models import db, Device, Person, Scan, OUI, Settings
 from scanner import NetworkScanner
 from config import Config
 import json
@@ -191,7 +191,10 @@ def scan_device_ports(device_id):
     
     try:
         # Use the scanner to scan ports for this specific device
-        open_ports = scanner._scan_ports(device.ip_address)
+        open_ports = scanner.scan_ports(device.ip_address)
+        
+        # Get additional device information
+        device_info = scanner.get_device_details(device.ip_address)
         
         # Create port information with service names
         port_info = []
@@ -201,13 +204,30 @@ def scan_device_ports(device_id):
                 'service': get_service_name(port)
             })
         
-        # Update device with new port information
+        # Update device with new port information and details
         device.open_ports = json.dumps(open_ports)
+        if device_info:
+            if device_info.get('os_info'):
+                device.os_info = device_info['os_info']
+            if device_info.get('vendor'):
+                device.vendor = device_info['vendor']
+            if device_info.get('device_type'):
+                device.device_type = device_info['device_type']
+            if device_info.get('os_family'):
+                device.os_family = device_info['os_family']
+            if device_info.get('netbios_name'):
+                device.netbios_name = device_info['netbios_name']
+            if device_info.get('workgroup'):
+                device.workgroup = device_info['workgroup']
+            if device_info.get('services'):
+                device.services = json.dumps(device_info['services'])
+        
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'ports': port_info
+            'ports': port_info,
+            'device_info': device_info
         })
         
     except Exception as e:
@@ -254,8 +274,63 @@ def timeline():
 def netspeed():
     return render_template('netspeed.html')
 
-@app.route('/settings')
-def settings():
+@app.route('/stats')
+def stats():
+    """Statistics page with leaderboards"""
+    from sqlalchemy import func, desc
+    
+    # Number of scans per device (leaderboard)
+    scan_leaderboard = db.session.query(
+        Device.hostname,
+        Device.ip_address,
+        Device.mac_address,
+        func.count(Scan.id).label('scan_count')
+    ).join(Scan).group_by(Device.id).order_by(desc('scan_count')).limit(10).all()
+    
+    # Most frequent brands (leaderboard)
+    brand_leaderboard = db.session.query(
+        Device.brand,
+        func.count(Device.id).label('device_count')
+    ).filter(Device.brand.isnot(None), Device.brand != '').group_by(Device.brand).order_by(desc('device_count')).limit(10).all()
+    
+    # Users with most devices (leaderboard)
+    user_leaderboard = db.session.query(
+        Person.name,
+        Person.email,
+        func.count(Device.id).label('device_count')
+    ).join(Device).group_by(Person.id).order_by(desc('device_count')).limit(10).all()
+    
+    # Calculate average ports per device manually for SQLite compatibility
+    devices_with_ports = Device.query.filter(Device.open_ports.isnot(None)).all()
+    total_ports = 0
+    device_count = 0
+    for device in devices_with_ports:
+        try:
+            ports = json.loads(device.open_ports or '[]')
+            total_ports += len(ports)
+            device_count += 1
+        except:
+            continue
+    
+    avg_ports = total_ports / device_count if device_count > 0 else 0
+    
+    # Overall statistics
+    overall_stats = {
+        'total_devices': Device.query.count(),
+        'online_devices': Device.query.filter_by(is_online=True).count(),
+        'offline_devices': Device.query.filter_by(is_online=False).count(),
+        'total_people': Person.query.count(),
+        'total_scans': Scan.query.count(),
+        'devices_with_owners': Device.query.filter(Device.person_id.isnot(None)).count(),
+        'unique_brands': db.session.query(func.count(func.distinct(Device.brand))).filter(Device.brand.isnot(None), Device.brand != '').scalar(),
+        'average_ports_per_device': avg_ports
+    }
+    
+    return render_template('stats.html', 
+                         scan_leaderboard=scan_leaderboard,
+                         brand_leaderboard=brand_leaderboard,
+                         user_leaderboard=user_leaderboard,
+                         overall_stats=overall_stats)
     from models import Device, Person, Scan
     
     stats = {
@@ -265,38 +340,46 @@ def settings():
         'total_scans': Scan.query.count()
     }
     
+    # Get settings from database
+    current_settings = {
+        'scan_interval': get_setting('scan_interval', app.config.get('SCAN_INTERVAL_MINUTES', 30)),
+        'network_range': get_setting('network_range', app.config.get('NETWORK_RANGE', 'auto')),
+        'dark_mode': get_setting('dark_mode', 'False') == 'True'
+    }
+    
     # Get last updated time (you can implement this based on your needs)
     last_updated = None
     
     return render_template('settings.html', 
                          config=app.config, 
                          stats=stats, 
-                         last_updated=last_updated)
+                         last_updated=last_updated,
+                         current_settings=current_settings)
 
 @app.route('/update_settings', methods=['POST'])
 def update_settings():
     try:
         scan_interval = request.form.get('scan_interval')
         network_range = request.form.get('network_range')
+        dark_mode = request.form.get('dark_mode') == 'on'
         
-        # Update config.py file
-        config_content = f"""import os
-
-class Config:
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///netscan.db'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    
-    # Scan configuration
-    SCAN_INTERVAL_MINUTES = int(os.environ.get('SCAN_INTERVAL_MINUTES', {scan_interval}))
-    NETWORK_RANGE = os.environ.get('NETWORK_RANGE', '{network_range}')  # auto-detect or specify like '192.168.1.0/24'
-    
-    # OUI database
-    OUI_UPDATE_URL = 'http://standards-oui.ieee.org/oui/oui.txt'
-"""
+        # Update settings in database
+        settings_to_update = [
+            ('scan_interval', scan_interval),
+            ('network_range', network_range),
+            ('dark_mode', str(dark_mode))
+        ]
         
-        with open('config.py', 'w') as f:
-            f.write(config_content)
+        for key, value in settings_to_update:
+            setting = Settings.query.filter_by(key=key).first()
+            if setting:
+                setting.value = value
+                setting.updated_at = datetime.utcnow()
+            else:
+                setting = Settings(key=key, value=value)
+                db.session.add(setting)
+        
+        db.session.commit()
         
         return redirect(url_for('settings'))
         
@@ -304,6 +387,11 @@ class Config:
         return render_template('settings.html', 
                              config=app.config, 
                              error=f"Failed to update settings: {str(e)}")
+
+def get_setting(key, default=None):
+    """Get a setting value from database"""
+    setting = Settings.query.filter_by(key=key).first()
+    return setting.value if setting else default
 
 @app.route('/update_system', methods=['POST'])
 def update_system():
@@ -447,7 +535,7 @@ def edit_person(person_id):
 def manual_scan():
     try:
         devices = scanner.scan_network()
-        scanner.mark_offline_devices()
+        scanner.mark_offline_devices()  # Ensure offline devices are marked
         return jsonify({'success': True, 'devices_found': len(devices)})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

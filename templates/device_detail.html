@@ -79,17 +79,61 @@
                         <td><strong>Last Seen:</strong></td>
                         <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
                     </tr>
+                    {% if device.os_info %}
+                    <tr>
+                        <td><strong>Operating System:</strong></td>
+                        <td>{{ device.os_info }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if device.os_family %}
+                    <tr>
+                        <td><strong>OS Family:</strong></td>
+                        <td>{{ device.os_family }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if device.device_type %}
+                    <tr>
+                        <td><strong>Device Type:</strong></td>
+                        <td>{{ device.device_type }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if device.vendor %}
+                    <tr>
+                        <td><strong>Vendor:</strong></td>
+                        <td>{{ device.vendor }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if device.netbios_name %}
+                    <tr>
+                        <td><strong>NetBIOS Name:</strong></td>
+                        <td>{{ device.netbios_name }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if device.workgroup %}
+                    <tr>
+                        <td><strong>Workgroup:</strong></td>
+                        <td>{{ device.workgroup }}</td>
+                    </tr>
+                    {% endif %}
                 </table>
                 
                 {% if device.open_ports %}
-                    <h6>Open Ports:</h6>
+                    <h6>Open Ports & Services:</h6>
                     <div id="ports-container">
                         {% set ports = device.open_ports | from_json %}
+                        {% set services = device.services | from_json if device.services else {} %}
                         {% for port in ports %}
-                            <span class="badge bg-info me-1 mb-1">
-                                {{ port }} 
-                                <small class="text-light">{{ get_service_name(port) }}</small>
-                            </span>
+                            <div class="mb-2">
+                                <span class="badge bg-info me-2">
+                                    {{ port }} 
+                                    <small class="text-light">{{ get_service_name(port) }}</small>
+                                </span>
+                                {% if services.get(port|string) %}
+                                    <small class="text-muted">
+                                        {{ services[port|string].product }} {{ services[port|string].version }}
+                                    </small>
+                                {% endif %}
+                            </div>
                         {% endfor %}
                     </div>
                 {% else %}

@@ -18,6 +18,16 @@ class Device(db.Model):
     open_ports = db.Column(db.Text)  # JSON string of open ports
     person_id = db.Column(db.Integer, db.ForeignKey('person.id'))
     merged_devices = db.Column(db.Text)  # JSON string of merged MAC addresses
+    
+    # Additional device information
+    os_info = db.Column(db.String(255))  # Operating system information
+    vendor = db.Column(db.String(100))   # Hardware vendor
+    device_type = db.Column(db.String(50))  # Device type (router, computer, etc.)
+    os_family = db.Column(db.String(50))    # OS family (Windows, Linux, etc.)
+    netbios_name = db.Column(db.String(100))  # NetBIOS name
+    workgroup = db.Column(db.String(100))     # Windows workgroup
+    services = db.Column(db.Text)  # JSON string of detected services
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -37,6 +47,13 @@ class Scan(db.Model):
     response_time = db.Column(db.Float)
     open_ports = db.Column(db.Text)  # JSON string
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Settings(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 class OUI(db.Model):
     id = db.Column(db.Integer, primary_key=True)
