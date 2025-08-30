@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}OUI Lookup - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-search me-2"></i>OUI Lookup Table</h1>
+    <button class="btn btn-primary" onclick="updateOUIDatabase()">
+        <i class="fas fa-sync-alt me-2"></i>Update OUI Database
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5><i class="fas fa-table me-2"></i>Registered OUI Prefixes</h5>
+        <div class="mt-2">
+            <input type="text" class="form-control" id="search-oui" placeholder="Search by prefix or manufacturer..." onkeyup="filterOUI()">
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped" id="oui-table">
+                <thead>
+                    <tr>
+                        <th>Prefix</th>
+                        <th>Manufacturer</th>
+                        <th>Registered</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for oui in ouis %}
+                    <tr>
+                        <td><code>{{ oui.prefix }}</code></td>
+                        <td>{{ oui.manufacturer }}</td>
+                        <td>{{ oui.created_at.strftime('%Y-%m-%d') if oui.created_at else 'Unknown' }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not ouis %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted">
+                            No OUI data found. Click "Update OUI Database" to download the latest data.
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterOUI() {
+    const input = document.getElementById('search-oui');
+    const filter = input.value.toUpperCase();
+    const table = document.getElementById('oui-table');
+    const tr = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < tr.length; i++) {
+        const td1 = tr[i].getElementsByTagName('td')[0];
+        const td2 = tr[i].getElementsByTagName('td')[1];
+        if (td1 && td2) {
+            const txtValue1 = td1.textContent || td1.innerText;
+            const txtValue2 = td2.textContent || td2.innerText;
+            if (txtValue1.toUpperCase().indexOf(filter) > -1 || txtValue2.toUpperCase().indexOf(filter) > -1) {
+                tr[i].style.display = '';
+            } else {
+                tr[i].style.display = 'none';
+            }
+        }
+    }
+}
+
+function updateOUIDatabase() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Updating...';
+    
+    fetch('/update_oui', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`OUI database updated successfully! Added ${data.count} entries.`);
+                location.reload();
+            } else {
+                alert(`Update failed: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            alert(`Error: ${error}`);
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.innerHTML = originalText;
+        });
+}
+</script>
+{% endblock %}

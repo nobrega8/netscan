@@ -7,9 +7,14 @@
     <h2>
         <i class="fas fa-user me-2"></i>{{ person.name }}
     </h2>
-    <a href="{{ url_for('people') }}" class="btn btn-secondary">
-        <i class="fas fa-arrow-left me-2"></i>Back
-    </a>
+    <div>
+        <a href="{{ url_for('edit_person', person_id=person.id) }}" class="btn btn-primary me-2">
+            <i class="fas fa-edit me-2"></i>Edit
+        </a>
+        <a href="{{ url_for('people') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left me-2"></i>Back
+        </a>
+    </div>
 </div>
 
 <div class="row">

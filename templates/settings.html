@@ -30,6 +30,22 @@
                         </div>
                     </div>
                     
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="dark_mode" class="form-label">Theme</label>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="dark_mode" name="dark_mode" 
+                                           onchange="toggleDarkMode(this.checked)">
+                                    <label class="form-check-label" for="dark_mode">
+                                        Dark Mode
+                                    </label>
+                                </div>
+                                <div class="form-text">Toggle between light and dark theme</div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <hr>
                     
                     <div class="d-flex justify-content-between">
@@ -48,7 +64,7 @@
                 <h5><i class="fas fa-info-circle me-2"></i>System Information</h5>
             </div>
             <div class="card-body">
-                <p><strong>Version:</strong> 1.1.0</p>
+                <p><strong>Version:</strong> 1.1.1</p>
                 <p><strong>Repository:</strong> nobrega8/netscan</p>
                 <p><strong>Last Updated:</strong> {{ last_updated or 'Unknown' }}</p>
                 
@@ -94,6 +110,22 @@
 
 {% block scripts %}
 <script>
+// Dark mode functionality
+function toggleDarkMode(enabled) {
+    document.body.setAttribute('data-theme', enabled ? 'dark' : 'light');
+    localStorage.setItem('darkMode', enabled);
+}
+
+// Load dark mode preference on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const darkMode = localStorage.getItem('darkMode') === 'true';
+    const darkModeToggle = document.getElementById('dark_mode');
+    if (darkModeToggle) {
+        darkModeToggle.checked = darkMode;
+        toggleDarkMode(darkMode);
+    }
+});
+
 function updateSystem() {
     const button = event.target;
     const originalText = button.innerHTML;

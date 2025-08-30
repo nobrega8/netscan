@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from werkzeug.utils import secure_filename
 from models import db, Device, Person, Scan, OUI
 from scanner import NetworkScanner
 from config import Config
@@ -10,6 +11,11 @@ import tempfile
 import os
 import requests
 from datetime import datetime, timedelta
+try:
+    from PIL import Image, ImageOps
+    PILLOW_AVAILABLE = True
+except ImportError:
+    PILLOW_AVAILABLE = False
 try:
     import speedtest
     SPEEDTEST_AVAILABLE = True
@@ -53,6 +59,60 @@ def get_service_name(port):
         1433: 'SQL Server', 6379: 'Redis', 27017: 'MongoDB'
     }
     return port_services.get(int(port), f'Port {port}')
+
+def allowed_file(filename):
+    """Check if file extension is allowed for upload"""
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def resize_and_save_image(file, upload_path, target_size=(200, 200)):
+    """Resize uploaded image to uniform size with proper cropping and padding"""
+    if not PILLOW_AVAILABLE:
+        # Fallback: just save the file as-is
+        file.save(upload_path)
+        return
+    
+    try:
+        # Open and process the image
+        image = Image.open(file.stream)
+        
+        # Convert to RGB if necessary (handles RGBA, etc.)
+        if image.mode in ('RGBA', 'LA', 'P'):
+            # Create white background
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+            image = background
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # Auto-crop transparent/white edges
+        image = ImageOps.autocontrast(image)
+        
+        # Use ImageOps.fit to crop and resize maintaining aspect ratio
+        # This crops from center and resizes to exact target size
+        image = ImageOps.fit(image, target_size, Image.Resampling.LANCZOS)
+        
+        # Add slight padding for uniform appearance (0.8 ratio as requested)
+        padding_size = int(target_size[0] * 0.1)  # 10% padding for 0.8 content ratio
+        final_image = Image.new('RGB', target_size, (255, 255, 255))
+        content_size = (target_size[0] - 2*padding_size, target_size[1] - 2*padding_size)
+        
+        # Resize content to fit in padded area
+        image = ImageOps.fit(image, content_size, Image.Resampling.LANCZOS)
+        
+        # Paste centered with padding
+        final_image.paste(image, (padding_size, padding_size))
+        
+        # Save the processed image
+        final_image.save(upload_path, 'JPEG', quality=90, optimize=True)
+        
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        # Fallback: save original file
+        file.seek(0)  # Reset file pointer
+        file.save(upload_path)
 
 # Create tables on startup
 with app.app_context():
@@ -103,13 +163,20 @@ def edit_device(device_id):
             file = request.files['device_image']
             if file and file.filename:
                 if allowed_file(file.filename):
+                    # Delete old image if exists
+                    if device.image_path:
+                        old_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), device.image_path)
+                        if os.path.exists(old_path):
+                            os.remove(old_path)
+                    
                     filename = secure_filename(f"device_{device_id}_{file.filename}")
                     upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
                     
                     # Create upload directory if it doesn't exist
                     os.makedirs(os.path.dirname(upload_path), exist_ok=True)
                     
-                    file.save(upload_path)
+                    # Resize and save image uniformly
+                    resize_and_save_image(file, upload_path)
                     device.image_path = filename
             
         db.session.commit()
@@ -170,6 +237,18 @@ def uploaded_file(filename):
 def people():
     people = Person.query.all()
     return render_template('people.html', people=people)
+
+@app.route('/oui_lookup')
+def oui_lookup():
+    ouis = OUI.query.order_by(OUI.prefix).all()
+    return render_template('oui_lookup.html', ouis=ouis)
+
+@app.route('/timeline')
+def timeline():
+    # Get devices with their scan history for timeline view
+    devices = Device.query.all()
+    scans = Scan.query.order_by(Scan.timestamp.desc()).limit(1000).all()
+    return render_template('timeline.html', devices=devices, scans=scans)
 
 @app.route('/netspeed')
 def netspeed():
@@ -245,6 +324,39 @@ def update_system():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
+@app.route('/update_oui', methods=['POST'])
+def update_oui():
+    try:
+        import requests
+        
+        # Download OUI database from IEEE
+        response = requests.get('http://standards-oui.ieee.org/oui/oui.txt', timeout=30)
+        response.raise_for_status()
+        
+        # Clear existing OUI data
+        OUI.query.delete()
+        
+        # Parse and insert new data
+        count = 0
+        for line in response.text.split('\n'):
+            line = line.strip()
+            if '(hex)' in line:
+                parts = line.split('\t')
+                if len(parts) >= 2:
+                    prefix = parts[0].replace('(hex)', '').strip().replace('-', ':')[:8]
+                    manufacturer = parts[1].strip()
+                    
+                    oui = OUI(prefix=prefix, manufacturer=manufacturer)
+                    db.session.add(oui)
+                    count += 1
+        
+        db.session.commit()
+        return jsonify({'success': True, 'count': count})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+
 @app.route('/person/<int:person_id>')
 def person_detail(person_id):
     person = Person.query.get_or_404(person_id)
@@ -287,7 +399,8 @@ def new_person():
                     # Create upload directory if it doesn't exist
                     os.makedirs(os.path.dirname(upload_path), exist_ok=True)
                     
-                    file.save(upload_path)
+                    # Resize and save image uniformly
+                    resize_and_save_image(file, upload_path)
                     person.image_path = filename
         
         db.session.add(person)
@@ -295,6 +408,40 @@ def new_person():
         return redirect(url_for('people'))
     
     return render_template('new_person.html')
+
+@app.route('/person/<int:person_id>/edit', methods=['GET', 'POST'])
+def edit_person(person_id):
+    person = Person.query.get_or_404(person_id)
+    
+    if request.method == 'POST':
+        person.name = request.form.get('name')
+        person.email = request.form.get('email')
+        
+        # Handle profile photo upload
+        if 'profile_photo' in request.files:
+            file = request.files['profile_photo']
+            if file and file.filename:
+                if allowed_file(file.filename):
+                    # Delete old image if exists
+                    if person.image_path:
+                        old_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), person.image_path)
+                        if os.path.exists(old_path):
+                            os.remove(old_path)
+                    
+                    filename = secure_filename(f"person_{person.id}_{file.filename}")
+                    upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
+                    
+                    # Create upload directory if it doesn't exist
+                    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+                    
+                    # Resize and save image uniformly
+                    resize_and_save_image(file, upload_path)
+                    person.image_path = filename
+        
+        db.session.commit()
+        return redirect(url_for('person_detail', person_id=person_id))
+    
+    return render_template('edit_person.html', person=person)
 
 @app.route('/scan', methods=['POST'])
 def manual_scan():

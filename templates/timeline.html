@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}Timeline - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="fas fa-history me-2"></i>Network Timeline</h1>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-line me-2"></i>Device Presence Timeline</h5>
+            </div>
+            <div class="card-body">
+                <div class="timeline-grid" id="timeline-grid">
+                    <!-- GitHub-style contribution grid will be generated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-devices me-2"></i>Active Devices</h5>
+            </div>
+            <div class="card-body">
+                {% for device in devices %}
+                <div class="d-flex align-items-center mb-3">
+                    <div class="avatar avatar-small me-2">
+                        {% if device.image_path %}
+                            <img src="{{ url_for('uploads', filename=device.image_path.split('/')[-1]) }}" 
+                                 alt="{{ device.hostname or 'Device' }}" class="avatar">
+                        {% else %}
+                            <div class="avatar avatar-small github-avatar" 
+                                 data-identifier="{{ device.mac_address }}"></div>
+                        {% endif %}
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-bold">{{ device.hostname or 'Unknown Device' }}</div>
+                        <small class="text-muted">{{ device.mac_address }}</small>
+                        <div class="mt-1">
+                            {% if device.is_online %}
+                                <span class="badge bg-success">Online</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Offline</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle me-2"></i>Legend</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-2">
+                    <div class="timeline-cell online me-2"></div>
+                    <span>Device Online</span>
+                </div>
+                <div class="d-flex align-items-center mb-2">
+                    <div class="timeline-cell offline me-2"></div>
+                    <span>Device Offline</span>
+                </div>
+                <div class="d-flex align-items-center">
+                    <div class="timeline-cell no-data me-2"></div>
+                    <span>No Data</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Generate GitHub-style timeline grid
+function generateTimelineGrid() {
+    const grid = document.getElementById('timeline-grid');
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth() - 11, 1); // 12 months ago
+    
+    // Create grid header with month labels
+    const header = document.createElement('div');
+    header.className = 'timeline-header';
+    
+    for (let month = 0; month < 12; month++) {
+        const monthDate = new Date(startDate.getFullYear(), startDate.getMonth() + month, 1);
+        const monthLabel = document.createElement('div');
+        monthLabel.className = 'timeline-month';
+        monthLabel.textContent = monthDate.toLocaleDateString('en', { month: 'short' });
+        header.appendChild(monthLabel);
+    }
+    grid.appendChild(header);
+    
+    // Create days grid
+    const daysContainer = document.createElement('div');
+    daysContainer.className = 'timeline-days';
+    
+    // Day labels
+    const dayLabels = ['Mon', 'Wed', 'Fri'];
+    const daysLabel = document.createElement('div');
+    daysLabel.className = 'timeline-day-labels';
+    
+    for (let i = 0; i < 7; i++) {
+        const dayLabel = document.createElement('div');
+        dayLabel.className = 'timeline-day-label';
+        if (i % 2 === 1 && dayLabels[Math.floor(i/2)]) {
+            dayLabel.textContent = dayLabels[Math.floor(i/2)];
+        }
+        daysLabel.appendChild(dayLabel);
+    }
+    daysContainer.appendChild(daysLabel);
+    
+    // Generate cells for each week
+    const weeks = document.createElement('div');
+    weeks.className = 'timeline-weeks';
+    
+    let currentDate = new Date(startDate);
+    
+    // Align to start of week (Monday)
+    while (currentDate.getDay() !== 1) {
+        currentDate.setDate(currentDate.getDate() - 1);
+    }
+    
+    while (currentDate <= now) {
+        const week = document.createElement('div');
+        week.className = 'timeline-week';
+        
+        for (let day = 0; day < 7; day++) {
+            const cell = document.createElement('div');
+            cell.className = 'timeline-cell';
+            cell.setAttribute('data-date', currentDate.toISOString().split('T')[0]);
+            
+            // Randomly assign some activity for demo
+            const activity = Math.random();
+            if (activity > 0.8) {
+                cell.classList.add('online');
+                cell.setAttribute('title', `${currentDate.toLocaleDateString()}: High activity`);
+            } else if (activity > 0.5) {
+                cell.classList.add('moderate');
+                cell.setAttribute('title', `${currentDate.toLocaleDateString()}: Moderate activity`);
+            } else if (activity > 0.2) {
+                cell.classList.add('low');
+                cell.setAttribute('title', `${currentDate.toLocaleDateString()}: Low activity`);
+            } else {
+                cell.classList.add('no-data');
+                cell.setAttribute('title', `${currentDate.toLocaleDateString()}: No activity`);
+            }
+            
+            week.appendChild(cell);
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        weeks.appendChild(week);
+    }
+    
+    daysContainer.appendChild(weeks);
+    grid.appendChild(daysContainer);
+}
+
+// Initialize timeline when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    generateTimelineGrid();
+    initializeGitHubAvatars();
+});
+</script>
+
+<style>
+.timeline-grid {
+    font-size: 12px;
+    overflow-x: auto;
+}
+
+.timeline-header {
+    display: flex;
+    margin-bottom: 8px;
+}
+
+.timeline-month {
+    flex: 1;
+    text-align: center;
+    font-weight: 600;
+    color: var(--color-fg-muted);
+}
+
+.timeline-days {
+    display: flex;
+}
+
+.timeline-day-labels {
+    display: flex;
+    flex-direction: column;
+    margin-right: 8px;
+    width: 30px;
+}
+
+.timeline-day-label {
+    height: 11px;
+    line-height: 11px;
+    font-size: 9px;
+    color: var(--color-fg-muted);
+    margin-bottom: 2px;
+}
+
+.timeline-weeks {
+    display: flex;
+    gap: 2px;
+}
+
+.timeline-week {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.timeline-cell {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+    background-color: var(--color-canvas-subtle);
+    border: 1px solid var(--color-border-default);
+    cursor: pointer;
+}
+
+.timeline-cell.online {
+    background-color: var(--color-success-fg);
+}
+
+.timeline-cell.moderate {
+    background-color: #40c463;
+}
+
+.timeline-cell.low {
+    background-color: #9be9a8;
+}
+
+.timeline-cell.offline {
+    background-color: var(--color-neutral-muted);
+}
+
+.timeline-cell.no-data {
+    background-color: var(--color-canvas-subtle);
+}
+
+.timeline-cell:hover {
+    border-color: var(--color-accent-fg);
+}
+</style>
+{% endblock %}
