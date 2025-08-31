@@ -1,7 +1,58 @@
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+import enum
 
 db = SQLAlchemy()
+
+class UserRole(enum.Enum):
+    ADMIN = "admin"
+    EDITOR = "editor"
+    VIEWER = "viewer"
+
+class User(UserMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.Enum(UserRole), default=UserRole.VIEWER, nullable=False)
+    must_change_password = db.Column(db.Boolean, default=False, nullable=False)
+    last_login_at = db.Column(db.DateTime)
+    failed_login_count = db.Column(db.Integer, default=0)
+    locked_until = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def set_password(self, password):
+        """Set password hash"""
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        """Check password against hash"""
+        return check_password_hash(self.password_hash, password)
+    
+    def has_role(self, role):
+        """Check if user has specific role"""
+        if isinstance(role, str):
+            role = UserRole(role)
+        return self.role == role
+    
+    def can_edit(self):
+        """Check if user can edit/modify data"""
+        return self.role in [UserRole.ADMIN, UserRole.EDITOR]
+    
+    def can_admin(self):
+        """Check if user has admin privileges"""
+        return self.role == UserRole.ADMIN
+    
+    def is_locked(self):
+        """Check if account is locked"""
+        if self.locked_until:
+            return datetime.utcnow() < self.locked_until
+        return False
+    
+    def __repr__(self):
+        return f'<User {self.username}>'
 
 class Device(db.Model):
     id = db.Column(db.Integer, primary_key=True)

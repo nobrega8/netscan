@@ -1,9 +1,16 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
 from flask_migrate import Migrate
+from flask_login import LoginManager, login_required, current_user
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
-from models import db, Device, Person, Scan, OUI, Settings
+from models import db, Device, Person, Scan, OUI, Settings, User, UserRole
 from scanner import NetworkScanner
 from config import Config
+from auth import auth_bp
+from admin import admin_bp, admin_required
+from functools import wraps
 import json
 import time
 import subprocess
@@ -32,8 +39,36 @@ app = Flask(__name__)
 app.config.from_object(Config)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 
+# Initialize extensions
 db.init_app(app)
 migrate = Migrate(app, db)
+
+# Setup Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'auth.login'
+login_manager.login_message = 'Please log in to access this page.'
+login_manager.login_message_category = 'info'
+
+# Setup CSRF protection
+csrf = CSRFProtect(app)
+
+# Setup rate limiting
+limiter = Limiter(
+    app,
+    key_func=get_remote_address,
+    default_limits=["1000 per day", "100 per hour"]
+)
+
+# User loader for Flask-Login
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+# Register blueprints
+app.register_blueprint(auth_bp)
+app.register_blueprint(admin_bp)
+
 scanner = NetworkScanner()
 
 # Template filter for JSON parsing
@@ -127,7 +162,65 @@ def ensure_sqlite_columns():
 # Database initialization is now handled manually or via auto-healing
 # Auto-healing functionality is available via the ensure_sqlite_columns function
 
+# Role-based authorization decorators
+def editor_required(f):
+    """Require editor role or higher"""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if not current_user.can_edit():
+            flash('Editor privileges required for this action.', 'error')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required_local(f):
+    """Require admin role"""
+    @wraps(f)
+    @login_required
+    def decorated_function(*args, **kwargs):
+        if not current_user.can_admin():
+            flash('Admin privileges required for this action.', 'error')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Health check endpoint (public)
+@app.route('/healthz')
+def healthz():
+    """Public health check endpoint for monitoring"""
+    return {'status': 'ok'}, 200
+
+# Create default admin user if no users exist
+def create_default_admin():
+    """Create default admin user if no users exist"""
+    try:
+        if User.query.count() == 0:
+            admin_username = os.environ.get('ADMIN_USERNAME', 'admin')
+            admin_password = os.environ.get('ADMIN_PASSWORD', 'admin123')
+            
+            admin = User(
+                username=admin_username,
+                role=UserRole.ADMIN,
+                must_change_password=True
+            )
+            admin.set_password(admin_password)
+            
+            db.session.add(admin)
+            db.session.commit()
+            
+            print(f"Created default admin user: {admin_username}")
+            print("IMPORTANT: Change the default password immediately!")
+    except Exception as e:
+        print(f"Error creating default admin: {e}")
+
 @app.route('/')
+@login_required
+def index():
+    return redirect(url_for('dashboard'))
+
+@app.route('/dashboard')
+@login_required
 def dashboard():
     # Ensure database schema is up-to-date on first access
     ensure_sqlite_columns()
@@ -144,17 +237,20 @@ def dashboard():
                          people=people)
 
 @app.route('/devices')
+@login_required
 def devices():
     devices = Device.query.order_by(Device.last_seen.desc()).all()
     return render_template('devices.html', devices=devices)
 
 @app.route('/device/<int:device_id>')
+@login_required
 def device_detail(device_id):
     device = Device.query.get_or_404(device_id)
     scans = Scan.query.filter_by(device_id=device_id).order_by(Scan.timestamp.desc()).limit(50).all()
     return render_template('device_detail.html', device=device, scans=scans)
 
 @app.route('/device/<int:device_id>/edit', methods=['GET', 'POST'])
+@editor_required
 def edit_device(device_id):
     device = Device.query.get_or_404(device_id)
     
@@ -212,6 +308,7 @@ def edit_device(device_id):
     return render_template('edit_device.html', device=device, people=people)
 
 @app.route('/device/<int:device_id>/scan_ports', methods=['POST'])
+@editor_required
 def scan_device_ports(device_id):
     device = Device.query.get_or_404(device_id)
     
@@ -280,20 +377,24 @@ def uploaded_file(filename):
     return send_from_directory(upload_folder, filename)
 
 @app.route('/people')
+@login_required
 def people():
     people = Person.query.all()
     return render_template('people.html', people=people)
 
 @app.route('/oui_lookup')
+@login_required
 def oui_lookup():
     ouis = OUI.query.order_by(OUI.prefix).all()
     return render_template('oui_lookup.html', ouis=ouis)
 
 @app.route('/netspeed')
+@login_required
 def netspeed():
     return render_template('netspeed.html')
 
 @app.route('/stats')
+@login_required
 def stats():
     """Statistics page with leaderboards"""
     try:
@@ -426,6 +527,7 @@ def stats():
                              })
 
 @app.route('/settings')
+@login_required
 def settings():
     from models import Device, Person, Scan
     
@@ -453,6 +555,7 @@ def settings():
                          current_settings=current_settings)
 
 @app.route('/update_settings', methods=['POST'])
+@editor_required
 def update_settings():
     try:
         scan_interval = request.form.get('scan_interval')
@@ -490,6 +593,7 @@ def get_setting(key, default=None):
     return setting.value if setting else default
 
 @app.route('/update_system', methods=['POST'])
+@admin_required_local
 def update_system():
     try:
         # Perform git pull
@@ -527,6 +631,7 @@ def update_system():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/update_oui', methods=['POST'])
+@admin_required_local
 def update_oui():
     try:
         import requests
@@ -604,6 +709,7 @@ def update_oui():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/person/<int:person_id>')
+@login_required
 def person_detail(person_id):
     person = Person.query.get_or_404(person_id)
     devices = Device.query.filter_by(person_id=person_id).all()
@@ -624,6 +730,7 @@ def person_detail(person_id):
     return render_template('person_detail.html', person=person, devices=devices, timeline=timeline)
 
 @app.route('/person/new', methods=['GET', 'POST'])
+@editor_required
 def new_person():
     if request.method == 'POST':
         person = Person(
@@ -656,6 +763,7 @@ def new_person():
     return render_template('new_person.html')
 
 @app.route('/person/<int:person_id>/edit', methods=['GET', 'POST'])
+@editor_required
 def edit_person(person_id):
     person = Person.query.get_or_404(person_id)
     
@@ -698,6 +806,7 @@ def edit_person(person_id):
     return render_template('edit_person.html', person=person)
 
 @app.route('/scan', methods=['POST'])
+@editor_required  
 def manual_scan():
     try:
         devices = scanner.scan_network()
@@ -707,6 +816,7 @@ def manual_scan():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/devices')
+@login_required
 def api_devices():
     devices = Device.query.all()
     return jsonify([{
@@ -722,6 +832,7 @@ def api_devices():
     } for d in devices])
 
 @app.route('/merge_devices', methods=['POST'])
+@editor_required
 def merge_devices():
     """Merge multiple devices (MAC addresses) into one"""
     data = request.get_json()
@@ -760,6 +871,7 @@ def merge_devices():
 
 # Speed Test API Endpoints
 @app.route('/api/speed-test/ping', methods=['POST'])
+@login_required
 def speed_test_ping():
     """Perform real ping test"""
     try:
@@ -831,6 +943,7 @@ def speed_test_ping():
         })
 
 @app.route('/api/speed-test/download', methods=['POST'])
+@login_required
 def speed_test_download():
     """Perform real download speed test"""
     try:
@@ -887,6 +1000,7 @@ def speed_test_download():
         })
 
 @app.route('/api/speed-test/upload', methods=['POST'])
+@login_required
 def speed_test_upload():
     """Perform real upload speed test"""
     try:
@@ -944,6 +1058,7 @@ def speed_test_upload():
         })
 
 @app.route('/api/speed-test/full', methods=['POST'])
+@login_required
 def speed_test_full():
     """Perform complete speed test (ping, download, upload)"""
     try:
@@ -987,5 +1102,21 @@ def speed_test_full():
             'error': f'Full speed test failed: {str(e)}'
         })
 
+# Add rate limiting to login route
+limiter.limit("5 per minute")(auth_bp.view_functions['login'])
+
+# Initialize database and create admin user
+def initialize_app():
+    """Initialize the application with database and default admin user"""
+    with app.app_context():
+        try:
+            # Ensure database tables exist
+            db.create_all()
+            # Create default admin user
+            create_default_admin()
+        except Exception as e:
+            print(f"Error during app initialization: {e}")
+
 if __name__ == '__main__':
+    initialize_app()
     app.run(debug=True, host='0.0.0.0', port=2530)
