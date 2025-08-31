@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-users me-2"></i>User Management</h2>
+    <a href="{{ url_for('admin.new_user') }}" class="btn btn-primary">
+        <i class="fas fa-plus me-2"></i>New User
+    </a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<div class="card">
+    <div class="card-body">
+        {% if users %}
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Last Login</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>
+                            <strong>{{ user.username }}</strong>
+                            {% if user.must_change_password %}
+                                <span class="badge bg-warning ms-2">Must Change Password</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'danger' if user.role.value == 'admin' else 'primary' if user.role.value == 'editor' else 'secondary' }}">
+                                {{ user.role.value.title() }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if user.is_locked() %}
+                                <span class="badge bg-danger">Locked</span>
+                            {% elif user.failed_login_count and user.failed_login_count > 0 %}
+                                <span class="badge bg-warning">{{ user.failed_login_count }} failed attempts</span>
+                            {% else %}
+                                <span class="badge bg-success">Active</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user.last_login_at %}
+                                <small>{{ user.last_login_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                            {% else %}
+                                <span class="text-muted">Never</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <small>{{ user.created_at.strftime('%Y-%m-%d') }}</small>
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" 
+                                   class="btn btn-outline-primary">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                
+                                {% if user.is_locked() %}
+                                <button type="button" class="btn btn-outline-warning" 
+                                        onclick="unlockUser({{ user.id }}, '{{ user.username }}')">
+                                    <i class="fas fa-unlock"></i>
+                                </button>
+                                {% endif %}
+                                
+                                <button type="button" class="btn btn-outline-info" 
+                                        onclick="resetPassword({{ user.id }}, '{{ user.username }}')">
+                                    <i class="fas fa-key"></i>
+                                </button>
+                                
+                                {% if user != current_user %}
+                                <button type="button" class="btn btn-outline-danger" 
+                                        onclick="deleteUser({{ user.id }}, '{{ user.username }}')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-users fa-3x text-muted mb-3"></i>
+            <h5>No users found</h5>
+            <p class="text-muted">Start by creating your first user.</p>
+            <a href="{{ url_for('admin.new_user') }}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Create User
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Password Reset Modal -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Password Reset</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Temporary password for <strong id="resetUsername"></strong>:</p>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="tempPassword" readonly>
+                    <button class="btn btn-outline-secondary" type="button" onclick="copyPassword()">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <div class="alert alert-warning mt-3 mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    The user will be required to change this password on next login.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function deleteUser(userId, username) {
+    if (confirm(`Are you sure you want to delete user "${username}"?`)) {
+        fetch(`/admin/users/${userId}/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            alert('Error deleting user: ' + error);
+        });
+    }
+}
+
+function unlockUser(userId, username) {
+    if (confirm(`Unlock user "${username}"?`)) {
+        fetch(`/admin/users/${userId}/unlock`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            alert('Error unlocking user: ' + error);
+        });
+    }
+}
+
+function resetPassword(userId, username) {
+    if (confirm(`Reset password for user "${username}"?`)) {
+        fetch(`/admin/users/${userId}/reset-password`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('resetUsername').textContent = username;
+                document.getElementById('tempPassword').value = data.temp_password;
+                new bootstrap.Modal(document.getElementById('passwordModal')).show();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            alert('Error resetting password: ' + error);
+        });
+    }
+}
+
+function copyPassword() {
+    const passwordField = document.getElementById('tempPassword');
+    passwordField.select();
+    passwordField.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(passwordField.value);
+    
+    // Show feedback
+    const button = event.target.closest('button');
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<i class="fas fa-check"></i>';
+    setTimeout(() => {
+        button.innerHTML = originalHTML;
+    }, 2000);
+}
+</script>
+{% endblock %}

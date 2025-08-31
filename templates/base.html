@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}NetScan{% endblock %}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <link href="{{ url_for('static', filename='css/bootstrap-local.css') }}" rel="stylesheet">
@@ -15,18 +16,68 @@
             <a class="navbar-brand" href="{{ url_for('dashboard') }}">
                 <i class="fas fa-network-wired me-2"></i>NetScan
             </a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
-                <a class="nav-link" href="{{ url_for('devices') }}">Devices</a>
-                <a class="nav-link" href="{{ url_for('people') }}">People</a>
-                <a class="nav-link" href="{{ url_for('oui_lookup') }}">OUI Lookup</a>
-                <a class="nav-link" href="{{ url_for('stats') }}">Stats</a>
-                <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
+            
+            {% if current_user.is_authenticated %}
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <div class="navbar-nav me-auto">
+                    <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
+                    <a class="nav-link" href="{{ url_for('devices') }}">Devices</a>
+                    <a class="nav-link" href="{{ url_for('people') }}">People</a>
+                    <a class="nav-link" href="{{ url_for('oui_lookup') }}">OUI Lookup</a>
+                    <a class="nav-link" href="{{ url_for('stats') }}">Stats</a>
+                    <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
+                </div>
+                
+                <div class="navbar-nav">
+                    {% if current_user.can_admin() %}
+                    <a class="nav-link" href="{{ url_for('admin.users') }}">
+                        <i class="fas fa-users me-1"></i>Users
+                    </a>
+                    {% endif %}
+                    
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user me-1"></i>{{ current_user.username }}
+                            <span class="badge bg-{{ 'danger' if current_user.role.value == 'admin' else 'primary' if current_user.role.value == 'editor' else 'secondary' }} ms-1">
+                                {{ current_user.role.value.title() }}
+                            </span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('auth.change_password') }}">
+                                    <i class="fas fa-key me-2"></i>Change Password
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('auth.logout') }}">
+                                    <i class="fas fa-sign-out-alt me-2"></i>Logout
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
             </div>
+            {% endif %}
         </div>
     </nav>
 
     <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
         {% block content %}{% endblock %}
     </div>
 

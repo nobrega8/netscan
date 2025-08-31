@@ -22,13 +22,25 @@ else
   echo "APT está ocupado; a instalar só quando livre ou instala manualmente: sudo apt -y install python3-venv"
 fi
 
-# 3) venv + requirements
+# 3) Generate SECRET_KEY if not provided
+if [ -z "$SECRET_KEY" ]; then
+  SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+  echo "Generated SECRET_KEY: $SECRET_KEY"
+  echo "Consider setting SECRET_KEY environment variable for production"
+fi
+
+# 4) venv + requirements
 cd "$APP_DIR"
 python3 -m venv venv
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
 
-# 4) Criar/atualizar serviço systemd
+# 5) Run database migrations
+export FLASK_APP=app.py
+export SECRET_KEY="$SECRET_KEY"
+./venv/bin/flask db upgrade 2>/dev/null || echo "Database migration not needed or failed"
+
+# 6) Criar/atualizar serviço systemd
 sudo tee /etc/systemd/system/netscan.service >/dev/null <<SERVICE
 [Unit]
 Description=NetScan Network Device Scanner
@@ -41,6 +53,7 @@ User=$RUN_USER
 Group=$RUN_GROUP
 WorkingDirectory=$APP_DIR
 Environment="PYTHONUNBUFFERED=1"
+Environment="SECRET_KEY=$SECRET_KEY"
 Environment="PATH=$APP_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
 ExecStart=$APP_DIR/venv/bin/python $APP_DIR/service.py
 Restart=on-failure
