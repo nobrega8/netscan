@@ -70,11 +70,11 @@
                     </label>
                     <select class="select select-bordered select-sm" x-model="typeFilter" @change="filterDevices()">
                         <option value="">All Types</option>
-                        <option value="computer">Computer</option>
-                        <option value="phone">Phone</option>
-                        <option value="router">Router</option>
-                        <option value="printer">Printer</option>
-                        <option value="iot">IoT Device</option>
+                        <option value="Computer">💻 Computer</option>
+                        <option value="Phone">📱 Phone</option>
+                        <option value="Network">📡 Router</option>
+                        <option value="Printer">🖨️ Printer</option>
+                        <option value="IoT">🌐 IoT Device</option>
                     </select>
                 </div>
                 <div class="form-control">
@@ -343,7 +343,8 @@ function devicesData() {
                 
                 const matchesType = !this.typeFilter ||
                     device.device_type === this.typeFilter ||
-                    device.category === this.typeFilter;
+                    device.category === this.typeFilter ||
+                    (this.typeFilter === 'Network' && (device.device_type === 'router' || device.category === 'Network'));
                 
                 return matchesSearch && matchesStatus && matchesType;
             });
