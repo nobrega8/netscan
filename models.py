@@ -3,6 +3,7 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import enum
+import json
 
 db = SQLAlchemy()
 
@@ -85,7 +86,6 @@ class Device(db.Model):
 
     def to_dict(self):
         """Convert Device object to dictionary for JSON serialization"""
-        import json
         
         try:
             # Parse JSON strings safely

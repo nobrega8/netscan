@@ -84,7 +84,7 @@ csrf = CSRFProtect(app)
 # Template context processor for CSRF token
 @app.context_processor
 def inject_csrf_token():
-    return dict(csrf_token=generate_csrf)
+    return dict(csrf_token=generate_csrf())
 
 # Setup rate limiting
 storage_uri = os.environ.get("REDIS_URL", "memory://")
