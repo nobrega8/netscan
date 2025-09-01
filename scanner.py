@@ -19,10 +19,10 @@ class EnhancedNetworkScanner:
             print(f"Warning: Could not initialize nmap scanner: {e}")
             self.nm = None
         
-        # Enhanced scanning options
+        # Enhanced scanning options (using TCP connect scan to avoid requiring root)
         self.scan_options = {
             'host_discovery': '-sn -T4 --min-parallelism 100',
-            'port_scan': '-sS -T4 -p 22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017',
+            'port_scan': '-sT -Pn -T4 --host-timeout 3s -p 22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017',
             'service_detection': '-sV --version-intensity 5',
             'os_detection': '-O --osscan-guess',
             'fast_scan': '-F -T4'
@@ -338,7 +338,7 @@ class EnhancedNetworkScanner:
         if not os_info:
             return self._guess_device_type_from_services(services)
         
-        os_info_lower = os_info.lower()
+        os_info_lower = (os_info or "").lower()
         
         if 'router' in os_info_lower or 'cisco' in os_info_lower:
             return 'router'
@@ -358,7 +358,7 @@ class EnhancedNetworkScanner:
         if not services:
             return 'unknown'
         
-        service_names = [s.get('service', '').lower() for s in services]
+        service_names = [(s.get('service') or '').lower() for s in services if s.get('service')]
         
         if any(s in service_names for s in ['http', 'https', 'ssh', 'telnet']):
             if any(s in service_names for s in ['snmp', 'upnp']):
@@ -382,7 +382,7 @@ class EnhancedNetworkScanner:
                 return service_type
         
         # Check hostname patterns
-        hostname = device_info.get('hostname', '').lower()
+        hostname = (device_info.get('hostname') or '').lower()
         if hostname:
             if any(pattern in hostname for pattern in ['router', 'gateway', 'ap-', 'access']):
                 return 'router'
@@ -394,7 +394,7 @@ class EnhancedNetworkScanner:
                 return 'computer'
         
         # Check vendor patterns
-        vendor = device_info.get('vendor', '').lower()
+        vendor = (device_info.get('vendor') or '').lower()
         if vendor:
             if any(pattern in vendor for pattern in ['cisco', 'netgear', 'linksys', 'tp-link']):
                 return 'router'
@@ -668,11 +668,11 @@ class NetworkScanner(EnhancedNetworkScanner):
             if not self.nm:
                 return self._basic_port_check(ip, ports.split(','))
             
-            # Try SYN scan first (requires root)
+            # Use TCP connect scan (no root required)
             try:
-                self.nm.scan(ip, ports, arguments='-sS')
+                self.nm.scan(ip, ports, arguments='-sT -Pn --host-timeout 3s')
             except Exception:
-                # Fallback to TCP connect scan (no root required)
+                # Fallback to basic scan if above fails
                 self.nm.scan(ip, ports, arguments='-sT')
                 
             open_ports = []
@@ -784,7 +784,8 @@ class NetworkScanner(EnhancedNetworkScanner):
             device_type = "Server"
             
             # Try to determine if it's a known system type
-            if 'raspberry' in hostname.lower() or 'pi' in hostname.lower():
+            hostname_lower = (hostname or '').lower()
+            if 'raspberry' in hostname_lower or 'pi' in hostname_lower:
                 vendor = "Raspberry Pi Foundation"
                 device_type = "Computer"
             elif platform.system().lower() == 'linux':
@@ -1021,7 +1022,7 @@ class NetworkScanner(EnhancedNetworkScanner):
             
             for line in lines:
                 line = line.strip()
-                if not line or 'incomplete' in line.lower():
+                if not line or 'incomplete' in (line or '').lower():
                     continue
                 
                 ip_address = None
@@ -1084,11 +1085,11 @@ class NetworkScanner(EnhancedNetworkScanner):
     def scan_ports(self, ip, ports='22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017'):
         """Scan common ports on a device (public method)"""
         try:
-            # Try SYN scan first (requires root)
+            # Use TCP connect scan (no root required)
             try:
-                self.nm.scan(ip, ports, arguments='-sS')
+                self.nm.scan(ip, ports, arguments='-sT -Pn --host-timeout 3s')
             except Exception:
-                # Fallback to TCP connect scan (no root required)
+                # Fallback to basic scan if above fails
                 self.nm.scan(ip, ports, arguments='-sT')
                 
             open_ports = []
@@ -1503,7 +1504,8 @@ class NetworkScanner(EnhancedNetworkScanner):
             device_type = "Server"
             
             # Try to determine if it's a known system type
-            if 'raspberry' in hostname.lower() or 'pi' in hostname.lower():
+            hostname_lower = (hostname or '').lower()
+            if 'raspberry' in hostname_lower or 'pi' in hostname_lower:
                 vendor = "Raspberry Pi Foundation"
                 device_type = "Computer"
             elif platform.system().lower() == 'linux':

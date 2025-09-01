@@ -1,70 +1,73 @@
-{% extends "base.html" %}
+{% extends "auth/base_login.html" %}
 
 {% block title %}Sign In - NetScan{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6 col-lg-4">
-        <div class="card shadow">
-            <div class="card-body">
-                <div class="text-center mb-4">
-                    <i class="fas fa-network-wired fa-3x text-primary mb-3"></i>
-                    <h4 class="card-title">NetScan</h4>
-                    <p class="text-muted">Sign in to continue</p>
-                </div>
+<div class="card w-full max-w-sm shadow-xl bg-base-100">
+    <div class="card-body">
+        <div class="text-center mb-4">
+            <i class="fas fa-network-wired fa-3x text-primary mb-3"></i>
+            <h4 class="card-title">NetScan</h4>
+            <p class="text-base-content/70">Sign in to continue</p>
+        </div>
 
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                                {{ message }}
-                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                            </div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
-
-                <form method="POST">
-                    {{ form.hidden_tag() }}
-                    
-                    <div class="mb-3">
-                        {{ form.username.label(class="form-label") }}
-                        {{ form.username(class="form-control" + (" is-invalid" if form.username.errors else "")) }}
-                        {% if form.username.errors %}
-                            <div class="invalid-feedback">
-                                {% for error in form.username.errors %}{{ error }}{% endfor %}
-                            </div>
-                        {% endif %}
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            
+            <div class="form-control w-full">
+                <label class="label">
+                    <span class="label-text">{{ form.username.label.text }}</span>
+                </label>
+                {{ form.username(class="input input-bordered w-full" + (" input-error" if form.username.errors else ""), placeholder="Username") }}
+                {% if form.username.errors %}
+                    <div class="label">
+                        <span class="label-text-alt text-error">
+                            {% for error in form.username.errors %}{{ error }}{% endfor %}
+                        </span>
                     </div>
-                    
-                    <div class="mb-3">
-                        {{ form.password.label(class="form-label") }}
-                        {{ form.password(class="form-control" + (" is-invalid" if form.password.errors else "")) }}
-                        {% if form.password.errors %}
-                            <div class="invalid-feedback">
-                                {% for error in form.password.errors %}{{ error }}{% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                    
-                    <div class="mb-3 form-check">
-                        {{ form.remember_me(class="form-check-input") }}
-                        {{ form.remember_me.label(class="form-check-label") }}
-                    </div>
-                    
-                    <div class="d-grid">
-                        {{ form.submit(class="btn btn-primary") }}
-                    </div>
-                </form>
+                {% endif %}
             </div>
-        </div>
+            
+            <div class="form-control w-full mt-4">
+                <label class="label">
+                    <span class="label-text">{{ form.password.label.text }}</span>
+                </label>
+                {{ form.password(class="input input-bordered w-full" + (" input-error" if form.password.errors else ""), placeholder="Password") }}
+                {% if form.password.errors %}
+                    <div class="label">
+                        <span class="label-text-alt text-error">
+                            {% for error in form.password.errors %}{{ error }}{% endfor %}
+                        </span>
+                    </div>
+                {% endif %}
+            </div>
+            
+            <div class="form-control mt-4">
+                <label class="label cursor-pointer justify-start">
+                    {{ form.remember_me(class="checkbox checkbox-primary") }}
+                    <span class="label-text ml-2">{{ form.remember_me.label.text }}</span>
+                </label>
+            </div>
+            
+            <div class="form-control mt-6">
+                {{ form.submit(class="btn btn-primary w-full") }}
+            </div>
+        </form>
         
-        <div class="text-center mt-3">
-            <small class="text-muted">
-                NetScan Network Scanner
-            </small>
-        </div>
+        {% if not current_user.is_authenticated %}
+            <div class="text-center mt-4">
+                <a href="{{ url_for('auth.first_login_password') }}" class="link link-primary text-sm">
+                    First time setup? Set password here
+                </a>
+            </div>
+        {% endif %}
     </div>
+</div>
+
+<div class="absolute bottom-4 text-center w-full">
+    <small class="text-base-content/50">
+        NetScan Network Scanner
+    </small>
 </div>
 {% endblock %}
 
@@ -72,7 +75,10 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Focus on username field
-    document.getElementById('username').focus();
+    const usernameField = document.querySelector('input[name="username"]');
+    if (usernameField) {
+        usernameField.focus();
+    }
 });
 </script>
 {% endblock %}

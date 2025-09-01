@@ -54,9 +54,11 @@ login_manager.login_message_category = 'info'
 csrf = CSRFProtect(app)
 
 # Setup rate limiting
+storage_uri = os.environ.get("REDIS_URL", "memory://")
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["1000 per day", "100 per hour"]
+    default_limits=["1000 per day", "100 per hour"],
+    storage_uri=storage_uri
 )
 limiter.init_app(app)
 

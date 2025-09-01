@@ -105,10 +105,19 @@ def change_password():
     return render_template('auth/change_password.html', title='Change Password', form=form)
 
 @auth_bp.route('/first-login-password', methods=['GET', 'POST'])
-@login_required
 def first_login_password():
-    if not current_user.must_change_password:
+    # Allow access without login for first-time password setup
+    if current_user.is_authenticated and not current_user.must_change_password:
         return redirect(url_for('index'))
+    
+    # If not authenticated, find the default admin user that needs password change
+    if not current_user.is_authenticated:
+        admin_user = User.query.filter_by(username='admin', must_change_password=True).first()
+        if not admin_user:
+            flash('No user found requiring password setup.', 'error')
+            return redirect(url_for('auth.login'))
+        # Auto-login the admin user for password setup
+        login_user(admin_user)
     
     form = FirstLoginPasswordForm()
     if form.validate_on_submit():
