@@ -85,6 +85,8 @@ class Device(db.Model):
 
     def to_dict(self):
         """Convert Device object to dictionary for JSON serialization"""
+        import json
+        
         # Parse JSON strings safely
         open_ports = []
         services = []
@@ -92,57 +94,61 @@ class Device(db.Model):
         
         try:
             if self.open_ports:
-                import json
                 open_ports = json.loads(self.open_ports)
-        except:
-            pass
+        except (json.JSONDecodeError, TypeError):
+            open_ports = []
             
         try:
             if self.services:
-                import json
                 services = json.loads(self.services)
-        except:
-            pass
+        except (json.JSONDecodeError, TypeError):
+            services = []
             
         try:
             if self.merged_devices:
-                import json
                 merged_devices = json.loads(self.merged_devices)
-        except:
-            pass
+        except (json.JSONDecodeError, TypeError):
+            merged_devices = []
         
-        # Handle owner relationship
+        # Handle owner relationship - get the person data separately to avoid relationship issues
         owner = None
-        if self.owner:
-            owner = {
-                'name': self.owner.name,
-                'email': self.owner.email,
-                'id': self.owner.id
-            }
+        if self.person_id:
+            try:
+                # Get person by ID to avoid SQLAlchemy relationship loading issues
+                person = db.session.get(Person, self.person_id)
+                if person:
+                    owner = {
+                        'id': person.id,
+                        'name': person.name,
+                        'email': person.email
+                    }
+            except Exception:
+                # If there's any issue with loading the owner, just skip it
+                owner = None
         
         return {
             'id': self.id,
-            'hostname': self.hostname,
-            'ip_address': self.ip_address,
-            'mac_address': self.mac_address,
-            'brand': self.brand,
-            'model': self.model,
-            'icon': self.icon,
-            'image_path': self.image_path,
-            'is_online': self.is_online,
+            'hostname': self.hostname or '',
+            'ip_address': self.ip_address or '',
+            'mac_address': self.mac_address or '',
+            'brand': self.brand or '',
+            'model': self.model or '',
+            'icon': self.icon or 'device',
+            'image_path': self.image_path or '',
+            'is_online': bool(self.is_online),
             'last_seen': self.last_seen.isoformat() if self.last_seen else None,
             'first_seen': self.first_seen.isoformat() if self.first_seen else None,
             'open_ports': open_ports,
             'person_id': self.person_id,
             'merged_devices': merged_devices,
-            'os_info': self.os_info,
-            'vendor': self.vendor,
-            'device_type': self.device_type,
-            'os_family': self.os_family,
-            'netbios_name': self.netbios_name,
-            'workgroup': self.workgroup,
+            'os_info': self.os_info or '',
+            'vendor': self.vendor or '',
+            'device_type': self.device_type or '',
+            'os_family': self.os_family or '',
+            'netbios_name': self.netbios_name or '',
+            'workgroup': self.workgroup or '',
             'services': services,
-            'category': self.category,
+            'category': self.category or '',
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'owner': owner

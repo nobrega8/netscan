@@ -270,10 +270,24 @@ def dashboard():
 @app.route('/devices')
 @login_required
 def devices():
-    devices = Device.query.order_by(Device.last_seen.desc()).all()
-    # Convert devices to dict for JSON serialization in template
-    devices_dict = [device.to_dict() for device in devices]
-    return render_template('devices.html', devices=devices_dict)
+    try:
+        devices = Device.query.order_by(Device.last_seen.desc()).all()
+        # Convert devices to dict for JSON serialization in template
+        devices_dict = []
+        for device in devices:
+            try:
+                device_data = device.to_dict()
+                devices_dict.append(device_data)
+            except Exception as e:
+                print(f"Error converting device {device.id} to dict: {e}")
+                # Skip problematic devices rather than crashing
+                continue
+        
+        return render_template('devices.html', devices=devices_dict)
+    except Exception as e:
+        print(f"Error in devices route: {e}")
+        # Return empty devices list in case of error
+        return render_template('devices.html', devices=[])
 
 @app.route('/device/<int:device_id>')
 @login_required
