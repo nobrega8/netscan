@@ -206,6 +206,8 @@ NetScan supports the following environment variables:
 - `DATABASE_URL`: Database connection string (default: SQLite)
 - `SCAN_INTERVAL_MINUTES`: Auto-scan interval (default: 30)
 - `NETWORK_RANGE`: Network range to scan (default: auto-detect)
+- `NETSCAN_DISABLE_STARTUP_SCAN`: Disable automatic scan on service startup (default: true)
+- `NETSCAN_ENABLE_OS_DETECTION`: Enable OS detection (requires root/setcap, default: false)
 - `REDIS_URL`: Redis connection for Flask-Limiter backend (optional, default: in-memory)
 
 #### Rate Limiting Backend (Production Recommendation)

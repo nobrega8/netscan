@@ -22,10 +22,13 @@ class Config:
     SCAN_INTERVAL_MINUTES = int(os.environ.get('SCAN_INTERVAL_MINUTES', 30))
     NETWORK_RANGE = os.environ.get('NETWORK_RANGE', 'auto')  # auto-detect or specify like '192.168.1.0/24'
     
+    # Startup scan configuration - disabled by default to prevent conflicts
+    DISABLE_STARTUP_SCAN = os.environ.get('NETSCAN_DISABLE_STARTUP_SCAN', 'true').lower() == 'true'
+    
     # OUI database
     OUI_UPDATE_URL = 'http://standards-oui.ieee.org/oui/oui.txt'
     
     # Scanning configuration - disable OS detection by default (requires root privileges)
-    ENABLE_OS_DETECTION = os.environ.get('ENABLE_OS_DETECTION', 'false').lower() == 'true'
+    ENABLE_OS_DETECTION = os.environ.get('NETSCAN_ENABLE_OS_DETECTION', 'false').lower() == 'true'
     # Disable SYN scanning by default (requires root privileges)
     ENABLE_SYN_SCAN = os.environ.get('ENABLE_SYN_SCAN', 'false').lower() == 'true'
