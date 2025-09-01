@@ -2,10 +2,36 @@
 set -euo pipefail
 
 APP_DIR="/opt/netscan"
-RUN_USER="${SUDO_USER:-$USER}"
+
+# Determine the correct user for running the service
+# This ensures the installation works on any Raspberry Pi with any username
+# Priority: SUDO_USER (who ran sudo), then USER, then whoami as fallback
+if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    RUN_USER="$SUDO_USER"
+    echo "Detected installation user from SUDO_USER: $RUN_USER"
+elif [ -n "${USER:-}" ] && [ "$USER" != "root" ]; then
+    RUN_USER="$USER"
+    echo "Detected installation user from USER: $RUN_USER"
+else
+    RUN_USER="$(whoami)"
+    if [ "$RUN_USER" = "root" ]; then
+        echo "ERROR: Cannot determine non-root user. Please run as a regular user with sudo."
+        echo "Example: sudo ./install.sh"
+        exit 1
+    fi
+    echo "Detected installation user from whoami: $RUN_USER"
+fi
+
+# Verify the user exists and get their primary group
+if ! id "$RUN_USER" >/dev/null 2>&1; then
+    echo "ERROR: User '$RUN_USER' does not exist on this system."
+    exit 1
+fi
+
 RUN_GROUP="$(id -gn "$RUN_USER")"
 
-echo "Installing NetScan service as $RUN_USER:$RUN_GROUP ..."
+echo "Installing NetScan service to run as $RUN_USER:$RUN_GROUP ..."
+echo "This ensures NetScan works on any Raspberry Pi installation."
 
 # 1) Copy code to /opt/netscan (if not already there)
 SRC="$(pwd)"
