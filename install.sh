@@ -30,8 +30,8 @@ fi
 
 RUN_GROUP="$(id -gn "$RUN_USER")"
 
-echo "Installing NetScan service to run as $RUN_USER:$RUN_GROUP ..."
-echo "This ensures NetScan works on any Raspberry Pi installation."
+echo "Installing NetScan service to run as root for advanced scanning capabilities..."
+echo "Installation files will be owned by $RUN_USER:$RUN_GROUP for compatibility."
 
 # 1) Copy code to /opt/netscan (if not already there)
 SRC="$(pwd)"
@@ -84,32 +84,35 @@ with app.app_context():
     print('Database initialized successfully')
 " || echo "Database initialization failed or already complete"
 
-# Ensure proper permissions on database files
+# Ensure proper permissions on database files for root access
 sudo chown -R "$RUN_USER:$RUN_GROUP" "$APP_DIR"
 if [ -f "instance/netscan.db" ]; then
-    sudo chown "$RUN_USER:$RUN_GROUP" instance/netscan.db
-    sudo chmod 664 instance/netscan.db
+    sudo chown root:root instance/netscan.db
+    sudo chmod 644 instance/netscan.db
 fi
 if [ -d "instance" ]; then
-    sudo chown -R "$RUN_USER:$RUN_GROUP" instance/
+    sudo chown -R root:root instance/
+    sudo chmod 755 instance/
 fi
 
 # 6) Create/update systemd service
 echo "Creating systemd service..."
 sudo tee /etc/systemd/system/netscan.service >/dev/null <<SERVICE
 [Unit]
-Description=NetScan Network Device Scanner
+Description=NetScan Network Device Scanner (Advanced Mode)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=$RUN_USER
-Group=$RUN_GROUP
+User=root
+Group=root
 WorkingDirectory=$APP_DIR
 Environment="PYTHONUNBUFFERED=1"
 Environment="SECRET_KEY=$SECRET_KEY"
 Environment="NETSCAN_PORT=2530"
+Environment="ENABLE_OS_DETECTION=true"
+Environment="ENABLE_SYN_SCAN=true"
 Environment="PATH=$APP_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
 ExecStart=$APP_DIR/venv/bin/python $APP_DIR/service.py
 Restart=on-failure
@@ -123,7 +126,12 @@ echo "Starting and enabling service..."
 sudo systemctl daemon-reload
 sudo systemctl enable --now netscan
 sudo systemctl status netscan --no-pager
-echo "Done. NetScan service is now running!"
+echo "Done. NetScan service is now running as root with advanced scanning capabilities!"
+echo ""
+echo "Advanced features enabled:"
+echo "  - OS Detection: Enabled (requires root)"
+echo "  - SYN Scanning: Enabled (requires root)"
+echo "  - Full nmap capabilities available"
 echo ""
 echo "Useful commands:"
 echo "  View logs: sudo journalctl -u netscan -f"

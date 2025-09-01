@@ -15,7 +15,7 @@ class Config:
     # OUI database
     OUI_UPDATE_URL = 'http://standards-oui.ieee.org/oui/oui.txt'
     
-    # Scanning configuration
-    ENABLE_OS_DETECTION = os.environ.get('ENABLE_OS_DETECTION', 'false').lower() == 'true'
-    # Additional security: disable privileged scans by default
-    ENABLE_SYN_SCAN = os.environ.get('ENABLE_SYN_SCAN', 'false').lower() == 'true'
+    # Scanning configuration - enabled by default for advanced analysis
+    ENABLE_OS_DETECTION = os.environ.get('ENABLE_OS_DETECTION', 'true').lower() == 'true'
+    # Enable SYN scanning by default (requires root privileges)
+    ENABLE_SYN_SCAN = os.environ.get('ENABLE_SYN_SCAN', 'true').lower() == 'true'
