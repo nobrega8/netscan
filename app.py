@@ -339,6 +339,7 @@ def edit_device(device_id):
     return render_template('edit_device.html', device=device, people=people)
 
 @app.route('/device/<int:device_id>/scan_ports', methods=['POST'])
+@csrf.exempt
 @editor_required
 def scan_device_ports(device_id):
     device = Device.query.get_or_404(device_id)
@@ -745,6 +746,7 @@ def get_update_status():
         return jsonify({'error': str(e)})
 
 @app.route('/update_oui', methods=['POST'])
+@csrf.exempt
 @admin_required_local
 def update_oui():
     """Update OUI database from IEEE registry"""
@@ -786,12 +788,12 @@ def update_oui():
             try:
                 from populate_oui import populate_oui_database
                 count = populate_oui_database()
-                return jsonify({'success': True, 'count': count, 'source': 'local_database'})
+                return jsonify({'success': True, 'count': count, 'source': 'local_database'}), 200, {'Content-Type': 'application/json'}
             except Exception as fallback_error:
                 return jsonify({
                     'success': False, 
                     'error': f'Could not fetch OUI data from any source and local fallback failed: {str(fallback_error)}'
-                }), 500
+                }), 500, {'Content-Type': 'application/json'}
         
         # Clear existing OUI data and insert new data in batches
         print("Clearing existing OUI data...")
@@ -854,7 +856,7 @@ def update_oui():
             'count': count, 
             'source': source_used,
             'message': f'OUI database updated with {count} entries'
-        })
+        }), 200, {'Content-Type': 'application/json'}
         
     except Exception as e:
         db.session.rollback()
@@ -862,7 +864,7 @@ def update_oui():
         return jsonify({
             'success': False, 
             'error': f'Failed to update OUI database: {str(e)}'
-        }), 500
+        }), 500, {'Content-Type': 'application/json'}
 
 @app.route('/person/<int:person_id>')
 @login_required
@@ -962,6 +964,7 @@ def edit_person(person_id):
     return render_template('edit_person.html', person=person)
 
 @app.route('/scan', methods=['POST'])
+@csrf.exempt
 @editor_required  
 def manual_scan():
     try:
@@ -1027,6 +1030,7 @@ def merge_devices():
 
 # Speed Test API Endpoints
 @app.route('/api/speed-test/ping', methods=['POST'])
+@csrf.exempt
 @login_required
 def speed_test_ping():
     """Perform real ping test"""
@@ -1099,6 +1103,7 @@ def speed_test_ping():
         })
 
 @app.route('/api/speed-test/download', methods=['POST'])
+@csrf.exempt
 @login_required
 def speed_test_download():
     """Perform real download speed test"""
@@ -1156,6 +1161,7 @@ def speed_test_download():
         })
 
 @app.route('/api/speed-test/upload', methods=['POST'])
+@csrf.exempt
 @login_required
 def speed_test_upload():
     """Perform real upload speed test"""
@@ -1214,6 +1220,7 @@ def speed_test_upload():
         })
 
 @app.route('/api/speed-test/full', methods=['POST'])
+@csrf.exempt
 @login_required
 def speed_test_full():
     """Perform complete speed test (ping, download, upload)"""
@@ -1260,6 +1267,7 @@ def speed_test_full():
 
 # Enhanced API endpoints for improved UI/UX
 @app.route('/api/scan/start', methods=['POST'])
+@csrf.exempt
 @login_required
 @editor_required
 def api_scan_start():
@@ -1349,28 +1357,92 @@ def api_devices_table():
     """Get devices data for table updates"""
     try:
         devices = Device.query.order_by(Device.last_seen.desc()).limit(10).all()
-        device_data = []
         
-        for device in devices:
-            device_data.append({
-                'id': device.id,
-                'hostname': device.hostname,
-                'ip_address': device.ip_address,
-                'mac_address': device.mac_address,
-                'brand': device.brand,
-                'vendor': device.vendor,
-                'is_online': device.is_online,
-                'last_seen': device.last_seen.isoformat() if device.last_seen else None,
-                'owner': {'name': device.owner.name} if device.owner else None,
-                'icon': device.icon,
-                'device_type': device.device_type
-            })
+        # Check if this is an HTMX request that expects HTML
+        if request.headers.get('HX-Request'):
+            # Return HTML for HTMX
+            html = ''
+            for device in devices:
+                status_badge = '''
+                    <div class="badge badge-success gap-2">
+                        <i class="fas fa-circle text-xs"></i>
+                        Online
+                    </div>
+                ''' if device.is_online else '''
+                    <div class="badge badge-ghost gap-2">
+                        <i class="fas fa-circle text-xs"></i>
+                        Offline
+                    </div>
+                '''
+                
+                html += f'''
+                <tr data-device-id="{device.id}">
+                    <td>{status_badge}</td>
+                    <td>
+                        <div class="flex items-center space-x-3">
+                            <div class="avatar">
+                                <div class="mask mask-circle w-8 h-8 bg-primary text-primary-content flex items-center justify-center">
+                                    <i class="fas fa-{device.icon or 'desktop'} text-xs"></i>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="font-bold text-sm">{device.hostname or 'Unknown'}</div>
+                                <div class="text-xs opacity-70">{device.device_type or 'Unknown'}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-sm font-mono">{device.ip_address or '-'}</td>
+                    <td class="text-xs font-mono">{device.mac_address or '-'}</td>
+                    <td class="text-sm">{device.brand or device.vendor or '-'}</td>
+                    <td class="text-sm">{device.owner.name if device.owner else '-'}</td>
+                    <td>
+                        <time class="text-sm" title="{device.last_seen.isoformat() if device.last_seen else ''}">
+                            {device.last_seen.strftime('%m/%d %H:%M') if device.last_seen else '-'}
+                        </time>
+                    </td>
+                    <td>
+                        <div class="flex space-x-1">
+                            <a href="/device/{device.id}" class="btn btn-ghost btn-xs">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            <a href="/device/{device.id}/edit" class="btn btn-ghost btn-xs">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                '''
+            
+            return html
+        else:
+            # Return JSON for API consumers
+            device_data = []
+            
+            for device in devices:
+                device_data.append({
+                    'id': device.id,
+                    'hostname': device.hostname,
+                    'ip_address': device.ip_address,
+                    'mac_address': device.mac_address,
+                    'brand': device.brand,
+                    'vendor': device.vendor,
+                    'is_online': device.is_online,
+                    'last_seen': device.last_seen.isoformat() if device.last_seen else None,
+                    'owner': {'name': device.owner.name} if device.owner else None,
+                    'icon': device.icon,
+                    'device_type': device.device_type
+                })
+            
+            return jsonify(device_data)
         
-        return jsonify(device_data)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        if request.headers.get('HX-Request'):
+            return f'<tr><td colspan="8" class="text-error text-center">Error loading devices: {str(e)}</td></tr>'
+        else:
+            return jsonify({'error': str(e)}), 500
 
 @app.route('/api/devices/merge', methods=['POST'])
+@csrf.exempt
 @login_required
 @editor_required
 def api_devices_merge():
@@ -1417,6 +1489,7 @@ def api_devices_merge():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/devices/<int:device_id>/scan', methods=['POST'])
+@csrf.exempt
 @login_required
 def api_device_scan(device_id):
     """Scan specific device for open ports"""

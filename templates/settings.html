@@ -11,6 +11,7 @@
             </div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('update_settings') }}">
+                    {{ csrf_token() }}
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">
@@ -50,8 +51,8 @@
                     <hr>
                     
                     <div class="d-flex justify-content-between">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save me-2"></i>Save Settings
+                        <button type="submit" class="btn btn-primary btn-standard">
+                            <i class="fas fa-save"></i>Save Settings
                         </button>
                     </div>
                 </form>

@@ -79,18 +79,23 @@ function updateOUIDatabase() {
     button.disabled = true;
     button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Updating...';
     
-    fetch('/update_oui', { method: 'POST' })
-        .then(response => response.json())
+    // Use the improved API helper
+    apiCall('/update_oui', { method: 'POST' })
         .then(data => {
             if (data.success) {
-                alert(`OUI database updated successfully! Added ${data.count} entries.`);
+                if (window.showToast) {
+                    showToast(`OUI database updated successfully! Added ${data.count} entries.`, 'success');
+                } else {
+                    alert(`OUI database updated successfully! Added ${data.count} entries.`);
+                }
                 location.reload();
             } else {
-                alert(`Update failed: ${data.error}`);
+                throw new Error(data.error || 'Unknown error updating OUI database');
             }
         })
         .catch(error => {
-            alert(`Error: ${error}`);
+            // Error already shown by apiCall helper
+            console.error('OUI update failed:', error);
         })
         .finally(() => {
             button.disabled = false;

@@ -1,5 +1,64 @@
 // Enhanced NetScan Application JavaScript
 
+// Utility function for making API calls with proper error handling
+async function apiCall(url, options = {}) {
+    try {
+        const defaultOptions = {
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        };
+        
+        const response = await fetch(url, { ...defaultOptions, ...options });
+        
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        
+        if (!response.ok) {
+            let errorMessage = `Request failed: ${response.status} ${response.statusText}`;
+            
+            if (isJson) {
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorData.message || errorMessage;
+                } catch (e) {
+                    // Fallback to default error message
+                }
+            } else {
+                try {
+                    const textError = await response.text();
+                    if (textError.length < 200) { // Avoid showing huge HTML error pages
+                        errorMessage = textError;
+                    }
+                } catch (e) {
+                    // Fallback to default error message
+                }
+            }
+            
+            throw new Error(errorMessage);
+        }
+        
+        if (isJson) {
+            return await response.json();
+        } else {
+            return await response.text();
+        }
+        
+    } catch (error) {
+        // Show user-friendly error messages
+        if (window.showToast) {
+            showToast(`Error: ${error.message}`, 'error');
+        } else {
+            console.error('API Error:', error);
+            alert(`Error: ${error.message}`);
+        }
+        throw error;
+    }
+}
+
 // Auto-refresh functionality
 let autoRefreshInterval;
 
@@ -21,17 +80,16 @@ function stopAutoRefresh() {
 }
 
 // Update device status via API
-function updateDeviceStatus() {
-    fetch('/api/devices')
-        .then(response => response.json())
-        .then(devices => {
-            devices.forEach(device => {
-                updateDeviceRow(device);
-            });
-        })
-        .catch(error => {
-            console.error('Error updating device status:', error);
+async function updateDeviceStatus() {
+    try {
+        const devices = await apiCall('/api/devices');
+        devices.forEach(device => {
+            updateDeviceRow(device);
         });
+    } catch (error) {
+        // Error already handled by apiCall
+        console.log('Failed to update device status');
+    }
 }
 
 function updateDeviceRow(device) {
@@ -59,7 +117,7 @@ function updateDeviceRow(device) {
 }
 
 // Enhanced scan functionality with progress tracking
-function startEnhancedScan() {
+async function startEnhancedScan() {
     const button = event.target;
     const originalContent = button.innerHTML;
     
@@ -70,17 +128,13 @@ function startEnhancedScan() {
         showToast('Starting network scan...', 'info');
     }
     
-    // Start async scan
-    fetch('/api/scan/start', { 
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
-        },
-        body: JSON.stringify({})
-    })
-    .then(response => response.json())
-    .then(data => {
+    try {
+        // Start async scan using improved error handling
+        const data = await apiCall('/api/scan/start', {
+            method: 'POST',
+            body: JSON.stringify({})
+        });
+        
         if (data.success) {
             if (window.showToast) {
                 showToast('Network scan started successfully', 'info');
@@ -89,24 +143,16 @@ function startEnhancedScan() {
             // Start progress monitoring
             monitorScanProgress(data.task_id, button, originalContent);
         } else {
-            if (window.showToast) {
-                showToast(`Failed to start scan: ${data.error}`, 'error');
-            } else {
-                alert(`Failed to start scan: ${data.error}`);
-            }
-            button.disabled = false;
-            button.innerHTML = originalContent;
+            // This should be handled by apiCall, but just in case
+            throw new Error(data.error || 'Unknown error starting scan');
         }
-    })
-    .catch(error => {
-        if (window.showToast) {
-            showToast(`Error: ${error}`, 'error');
-        } else {
-            alert(`Error: ${error}`);
-        }
+        
+    } catch (error) {
+        // Error already shown by apiCall helper
         button.disabled = false;
         button.innerHTML = originalContent;
-    });
+    }
+}
 }
 
 function monitorScanProgress(taskId, button, originalContent) {

@@ -11,6 +11,7 @@
             </div>
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data">
+                    {{ csrf_token() }}
                     <div class="mb-3">
                         <label for="name" class="form-label">Name *</label>
                         <input type="text" class="form-control" id="name" name="name" required>
@@ -28,11 +29,11 @@
                     </div>
                     
                     <div class="d-flex justify-content-between">
-                        <a href="{{ url_for('people') }}" class="btn btn-secondary">
-                            Cancel
+                        <a href="{{ url_for('people') }}" class="btn btn-secondary btn-standard">
+                            <i class="fas fa-times"></i>Cancel
                         </a>
-                        <button type="submit" class="btn btn-primary">
-                            Add Person
+                        <button type="submit" class="btn btn-primary btn-standard">
+                            <i class="fas fa-user-plus"></i>Add Person
                         </button>
                     </div>
                 </form>

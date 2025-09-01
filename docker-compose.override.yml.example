@@ -1,0 +1,25 @@
+# Docker Compose override for development
+# This file is automatically used by docker-compose to override settings
+# for local development. To disable, rename this file.
+
+version: '3.8'
+
+services:
+  netscan:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount source code for development
+      - .:/app
+      # Preserve volumes for data
+      - netscan_data:/app/instance
+      - netscan_uploads:/app/static/uploads
+    environment:
+      # Enable development mode
+      - FLASK_ENV=development
+      - FLASK_DEBUG=true
+      # Allow startup scan in development
+      - NETSCAN_DISABLE_STARTUP_SCAN=false
+    # Enable hot reload by overriding the command
+    command: ["python", "app.py"]
