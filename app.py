@@ -1292,34 +1292,30 @@ def speed_test_full():
 def api_scan_start():
     """Start network scan with progress tracking"""
     try:
-        # Validate content-type - be more flexible for scan requests
-        if not request.is_json and request.content_type != 'application/json':
-            # Allow empty requests or check if we can parse as JSON anyway
-            if request.content_length and request.content_length > 0:
-                # Try to get data anyway - might be JSON without proper content-type
-                try:
-                    test_data = request.get_json(force=True)
-                    if test_data is None:
-                        return jsonify({
-                            'success': False,
-                            'error': 'Content-Type must be application/json or request must be empty'
-                        }), 415
-                except:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Content-Type must be application/json for non-empty requests'
-                    }), 415
-        
-        # Get JSON data with error handling
+        # Get JSON data with flexible parsing - allow empty requests
+        data = {}
         try:
-            data = request.get_json(force=True) or {}
+            # Try to get JSON data, but don't fail if it's empty or malformed
+            if request.content_length and request.content_length > 0:
+                data = request.get_json(force=True) or {}
+            # If no content or content_length is 0, use empty dict
         except Exception as json_error:
+            # If JSON parsing fails but we have content, return error
+            if request.content_length and request.content_length > 0:
+                return jsonify({
+                    'success': False,
+                    'error': f'Invalid JSON: {str(json_error)}'
+                }), 422
+            # Otherwise, proceed with empty data
+        
+        # Import and check task functionality
+        try:
+            from tasks import start_network_scan, task_manager
+        except ImportError as import_error:
             return jsonify({
                 'success': False,
-                'error': f'Invalid JSON: {str(json_error)}'
-            }), 422
-        
-        from tasks import start_network_scan, task_manager
+                'error': 'Scan functionality not available. Please check server configuration.'
+            }), 503
         
         # Check if a scan is already running
         active_tasks = task_manager.get_all_tasks()
