@@ -1291,14 +1291,23 @@ def speed_test_full():
 def api_scan_start():
     """Start network scan with progress tracking"""
     try:
-        # Validate content-type
+        # Validate content-type - be more flexible for scan requests
         if not request.is_json and request.content_type != 'application/json':
-            # Allow empty requests for backwards compatibility
+            # Allow empty requests or check if we can parse as JSON anyway
             if request.content_length and request.content_length > 0:
-                return jsonify({
-                    'success': False,
-                    'error': 'Content-Type must be application/json'
-                }), 415
+                # Try to get data anyway - might be JSON without proper content-type
+                try:
+                    test_data = request.get_json(force=True)
+                    if test_data is None:
+                        return jsonify({
+                            'success': False,
+                            'error': 'Content-Type must be application/json or request must be empty'
+                        }), 415
+                except:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Content-Type must be application/json for non-empty requests'
+                    }), 415
         
         # Get JSON data with error handling
         try:
