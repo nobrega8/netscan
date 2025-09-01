@@ -339,6 +339,7 @@ def edit_device(device_id):
     return render_template('edit_device.html', device=device, people=people)
 
 @app.route('/device/<int:device_id>/scan_ports', methods=['POST'])
+@csrf.exempt
 @editor_required
 def scan_device_ports(device_id):
     device = Device.query.get_or_404(device_id)
@@ -745,6 +746,7 @@ def get_update_status():
         return jsonify({'error': str(e)})
 
 @app.route('/update_oui', methods=['POST'])
+@csrf.exempt
 @admin_required_local
 def update_oui():
     """Update OUI database from IEEE registry"""
@@ -786,12 +788,12 @@ def update_oui():
             try:
                 from populate_oui import populate_oui_database
                 count = populate_oui_database()
-                return jsonify({'success': True, 'count': count, 'source': 'local_database'})
+                return jsonify({'success': True, 'count': count, 'source': 'local_database'}), 200, {'Content-Type': 'application/json'}
             except Exception as fallback_error:
                 return jsonify({
                     'success': False, 
                     'error': f'Could not fetch OUI data from any source and local fallback failed: {str(fallback_error)}'
-                }), 500
+                }), 500, {'Content-Type': 'application/json'}
         
         # Clear existing OUI data and insert new data in batches
         print("Clearing existing OUI data...")
@@ -854,7 +856,7 @@ def update_oui():
             'count': count, 
             'source': source_used,
             'message': f'OUI database updated with {count} entries'
-        })
+        }), 200, {'Content-Type': 'application/json'}
         
     except Exception as e:
         db.session.rollback()
@@ -862,7 +864,7 @@ def update_oui():
         return jsonify({
             'success': False, 
             'error': f'Failed to update OUI database: {str(e)}'
-        }), 500
+        }), 500, {'Content-Type': 'application/json'}
 
 @app.route('/person/<int:person_id>')
 @login_required
@@ -962,6 +964,7 @@ def edit_person(person_id):
     return render_template('edit_person.html', person=person)
 
 @app.route('/scan', methods=['POST'])
+@csrf.exempt
 @editor_required  
 def manual_scan():
     try:
@@ -1027,6 +1030,7 @@ def merge_devices():
 
 # Speed Test API Endpoints
 @app.route('/api/speed-test/ping', methods=['POST'])
+@csrf.exempt
 @login_required
 def speed_test_ping():
     """Perform real ping test"""
@@ -1099,6 +1103,7 @@ def speed_test_ping():
         })
 
 @app.route('/api/speed-test/download', methods=['POST'])
+@csrf.exempt
 @login_required
 def speed_test_download():
     """Perform real download speed test"""
@@ -1156,6 +1161,7 @@ def speed_test_download():
         })
 
 @app.route('/api/speed-test/upload', methods=['POST'])
+@csrf.exempt
 @login_required
 def speed_test_upload():
     """Perform real upload speed test"""
@@ -1214,6 +1220,7 @@ def speed_test_upload():
         })
 
 @app.route('/api/speed-test/full', methods=['POST'])
+@csrf.exempt
 @login_required
 def speed_test_full():
     """Perform complete speed test (ping, download, upload)"""
@@ -1260,6 +1267,7 @@ def speed_test_full():
 
 # Enhanced API endpoints for improved UI/UX
 @app.route('/api/scan/start', methods=['POST'])
+@csrf.exempt
 @login_required
 @editor_required
 def api_scan_start():
@@ -1371,6 +1379,7 @@ def api_devices_table():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/devices/merge', methods=['POST'])
+@csrf.exempt
 @login_required
 @editor_required
 def api_devices_merge():
@@ -1417,6 +1426,7 @@ def api_devices_merge():
         return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/devices/<int:device_id>/scan', methods=['POST'])
+@csrf.exempt
 @login_required
 def api_device_scan(device_id):
     """Scan specific device for open ports"""
