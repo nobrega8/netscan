@@ -1357,26 +1357,89 @@ def api_devices_table():
     """Get devices data for table updates"""
     try:
         devices = Device.query.order_by(Device.last_seen.desc()).limit(10).all()
-        device_data = []
         
-        for device in devices:
-            device_data.append({
-                'id': device.id,
-                'hostname': device.hostname,
-                'ip_address': device.ip_address,
-                'mac_address': device.mac_address,
-                'brand': device.brand,
-                'vendor': device.vendor,
-                'is_online': device.is_online,
-                'last_seen': device.last_seen.isoformat() if device.last_seen else None,
-                'owner': {'name': device.owner.name} if device.owner else None,
-                'icon': device.icon,
-                'device_type': device.device_type
-            })
+        # Check if this is an HTMX request that expects HTML
+        if request.headers.get('HX-Request'):
+            # Return HTML for HTMX
+            html = ''
+            for device in devices:
+                status_badge = '''
+                    <div class="badge badge-success gap-2">
+                        <i class="fas fa-circle text-xs"></i>
+                        Online
+                    </div>
+                ''' if device.is_online else '''
+                    <div class="badge badge-ghost gap-2">
+                        <i class="fas fa-circle text-xs"></i>
+                        Offline
+                    </div>
+                '''
+                
+                html += f'''
+                <tr data-device-id="{device.id}">
+                    <td>{status_badge}</td>
+                    <td>
+                        <div class="flex items-center space-x-3">
+                            <div class="avatar">
+                                <div class="mask mask-circle w-8 h-8 bg-primary text-primary-content flex items-center justify-center">
+                                    <i class="fas fa-{device.icon or 'desktop'} text-xs"></i>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="font-bold text-sm">{device.hostname or 'Unknown'}</div>
+                                <div class="text-xs opacity-70">{device.device_type or 'Unknown'}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-sm font-mono">{device.ip_address or '-'}</td>
+                    <td class="text-xs font-mono">{device.mac_address or '-'}</td>
+                    <td class="text-sm">{device.brand or device.vendor or '-'}</td>
+                    <td class="text-sm">{device.owner.name if device.owner else '-'}</td>
+                    <td>
+                        <time class="text-sm" title="{device.last_seen.isoformat() if device.last_seen else ''}">
+                            {device.last_seen.strftime('%m/%d %H:%M') if device.last_seen else '-'}
+                        </time>
+                    </td>
+                    <td>
+                        <div class="flex space-x-1">
+                            <a href="/device/{device.id}" class="btn btn-ghost btn-xs">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            <a href="/device/{device.id}/edit" class="btn btn-ghost btn-xs">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                '''
+            
+            return html
+        else:
+            # Return JSON for API consumers
+            device_data = []
+            
+            for device in devices:
+                device_data.append({
+                    'id': device.id,
+                    'hostname': device.hostname,
+                    'ip_address': device.ip_address,
+                    'mac_address': device.mac_address,
+                    'brand': device.brand,
+                    'vendor': device.vendor,
+                    'is_online': device.is_online,
+                    'last_seen': device.last_seen.isoformat() if device.last_seen else None,
+                    'owner': {'name': device.owner.name} if device.owner else None,
+                    'icon': device.icon,
+                    'device_type': device.device_type
+                })
+            
+            return jsonify(device_data)
         
-        return jsonify(device_data)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        if request.headers.get('HX-Request'):
+            return f'<tr><td colspan="8" class="text-error text-center">Error loading devices: {str(e)}</td></tr>'
+        else:
+            return jsonify({'error': str(e)}), 500
 
 @app.route('/api/devices/merge', methods=['POST'])
 @csrf.exempt

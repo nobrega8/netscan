@@ -12,12 +12,12 @@
         </div>
         <div class="mt-4 lg:mt-0 flex gap-2">
             <button 
-                class="btn btn-primary"
+                class="btn btn-primary btn-standard"
                 onclick="startEnhancedScan()"
                 :disabled="isScanning"
             >
                 <span x-show="!isScanning">
-                    <i class="fas fa-search mr-2"></i>Scan Network
+                    <i class="fas fa-search"></i>Scan Network
                 </span>
                 <span x-show="isScanning" class="flex items-center">
                     <span class="loading loading-spinner loading-sm mr-2"></span>Scanning...
@@ -202,9 +202,8 @@
                     </table>
                 </div>
                 <div class="card-actions justify-end mt-4">
-                    <a href="{{ url_for('devices') }}" class="btn btn-primary btn-sm">
-                        View All Devices
-                        <i class="fas fa-arrow-right ml-2"></i>
+                    <a href="{{ url_for('devices') }}" class="btn btn-primary btn-standard btn-sm">
+                        <i class="fas fa-arrow-right"></i>View All Devices
                     </a>
                 </div>
             </div>
