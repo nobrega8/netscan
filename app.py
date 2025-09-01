@@ -283,14 +283,28 @@ def devices():
         devices_dict = []
         for i, device in enumerate(devices):
             try:
+                # Check if device is properly loaded
+                if not hasattr(device, 'id') or device.id is None:
+                    print(f"Skipping device {i} - no valid ID")
+                    continue
+                    
                 device_data = device.to_dict()
-                # Verify it's actually a dict
+                
+                # Verify it's actually a dict and contains required fields
                 if not isinstance(device_data, dict):
                     print(f"Device {device.id} to_dict() returned {type(device_data)}, skipping")
                     continue
+                    
+                # Ensure all required fields exist
+                required_fields = ['id', 'hostname', 'ip_address', 'mac_address', 'is_online']
+                if not all(field in device_data for field in required_fields):
+                    print(f"Device {device.id} missing required fields, skipping")
+                    continue
+                
                 devices_dict.append(device_data)
+                
             except Exception as e:
-                print(f"Error converting device {device.id if hasattr(device, 'id') else i} to dict: {e}")
+                print(f"Error converting device {getattr(device, 'id', i)} to dict: {e}")
                 import traceback
                 traceback.print_exc()
                 # Skip problematic devices rather than crashing
@@ -301,19 +315,29 @@ def devices():
         # Test JSON serialization before passing to template
         try:
             import json
-            json.dumps(devices_dict)
+            serialized = json.dumps(devices_dict)
             print("JSON serialization test passed")
+            
+            # Test deserialization to ensure round-trip works
+            json.loads(serialized)
+            print("JSON deserialization test passed")
+            
         except Exception as e:
             print(f"JSON serialization test failed: {e}")
-            # If JSON serialization fails, return empty list
+            import traceback
+            traceback.print_exc()
+            # If JSON serialization fails, return empty list and show error
+            flash('Error loading device data. Please refresh the page.', 'error')
             return render_template('devices.html', devices=[])
         
         return render_template('devices.html', devices=devices_dict)
+        
     except Exception as e:
         print(f"Error in devices route: {e}")
         import traceback
         traceback.print_exc()
         # Return empty devices list in case of error
+        flash('Error loading devices. Please try again.', 'error')
         return render_template('devices.html', devices=[])
 
 @app.route('/device/<int:device_id>')
@@ -329,6 +353,16 @@ def edit_device(device_id):
     device = Device.query.get_or_404(device_id)
     
     if request.method == 'POST':
+        try:
+            # Validate CSRF token
+            from flask_wtf.csrf import validate_csrf
+            validate_csrf(request.form.get('csrf_token'))
+        except Exception as e:
+            print(f"CSRF validation failed: {e}")
+            flash('Security token validation failed. Please try again.', 'error')
+            people = Person.query.all()
+            return render_template('edit_device.html', device=device, people=people), 400
+            
         device.hostname = request.form.get('hostname')
         device.brand = request.form.get('brand')
         device.model = request.form.get('model')
@@ -375,8 +409,16 @@ def edit_device(device_id):
                 # Update existing OUI if the brand is different
                 existing_oui.manufacturer = device.brand
         
-        db.session.commit()
-        return redirect(url_for('device_detail', device_id=device.id))
+        try:
+            db.session.commit()
+            flash('Device updated successfully!', 'success')
+            return redirect(url_for('device_detail', device_id=device.id))
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error saving device: {e}")
+            flash(f'Error updating device: {str(e)}', 'error')
+            people = Person.query.all()
+            return render_template('edit_device.html', device=device, people=people), 500
     
     people = Person.query.all()
     return render_template('edit_device.html', device=device, people=people)

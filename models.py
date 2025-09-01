@@ -88,98 +88,125 @@ class Device(db.Model):
         """Convert Device object to dictionary for JSON serialization"""
         
         try:
-            # Parse JSON strings safely
+            # Parse JSON strings safely - ensure they're always lists
             open_ports = []
             services = []
             merged_devices = []
             
             try:
-                if self.open_ports:
-                    open_ports = json.loads(self.open_ports)
-            except (json.JSONDecodeError, TypeError):
+                if self.open_ports and isinstance(self.open_ports, str):
+                    parsed = json.loads(self.open_ports)
+                    open_ports = parsed if isinstance(parsed, list) else []
+                elif isinstance(self.open_ports, list):
+                    open_ports = self.open_ports
+            except (json.JSONDecodeError, TypeError, AttributeError):
                 open_ports = []
                 
             try:
-                if self.services:
-                    services = json.loads(self.services)
-            except (json.JSONDecodeError, TypeError):
+                if self.services and isinstance(self.services, str):
+                    parsed = json.loads(self.services)
+                    services = parsed if isinstance(parsed, list) else []
+                elif isinstance(self.services, list):
+                    services = self.services
+            except (json.JSONDecodeError, TypeError, AttributeError):
                 services = []
                 
             try:
-                if self.merged_devices:
-                    merged_devices = json.loads(self.merged_devices)
-            except (json.JSONDecodeError, TypeError):
+                if self.merged_devices and isinstance(self.merged_devices, str):
+                    parsed = json.loads(self.merged_devices)
+                    merged_devices = parsed if isinstance(parsed, list) else []
+                elif isinstance(self.merged_devices, list):
+                    merged_devices = self.merged_devices
+            except (json.JSONDecodeError, TypeError, AttributeError):
                 merged_devices = []
             
             # Handle owner relationship - get the person data separately to avoid relationship issues
             owner = None
             if self.person_id:
                 try:
-                    # Get person by ID to avoid SQLAlchemy relationship loading issues
-                    person = db.session.get(Person, self.person_id)
-                    if person:
+                    # Use explicit session query to avoid detached instance issues
+                    from sqlalchemy.orm import sessionmaker
+                    from sqlalchemy import create_engine
+                    
+                    # Get person by ID using a fresh query to avoid SQLAlchemy relationship loading issues
+                    person_query = db.session.query(Person).filter(Person.id == self.person_id).first()
+                    if person_query:
                         owner = {
-                            'id': person.id,
-                            'name': str(person.name) if person.name else '',
-                            'email': str(person.email) if person.email else ''
+                            'id': int(person_query.id),
+                            'name': str(person_query.name) if person_query.name else '',
+                            'email': str(person_query.email) if person_query.email else ''
                         }
                 except Exception as e:
-                    print(f"Error loading owner for device {self.id}: {e}")
+                    print(f"Error loading owner for device {getattr(self, 'id', 'unknown')}: {e}")
                     # If there's any issue with loading the owner, just skip it
                     owner = None
             
+            # Safely convert all values to JSON-serializable types
             result = {
-                'id': int(self.id) if self.id is not None else 0,
-                'hostname': str(self.hostname) if self.hostname else '',
-                'ip_address': str(self.ip_address) if self.ip_address else '',
-                'mac_address': str(self.mac_address) if self.mac_address else '',
-                'brand': str(self.brand) if self.brand else '',
-                'model': str(self.model) if self.model else '',
-                'icon': str(self.icon) if self.icon else 'device',
-                'image_path': str(self.image_path) if self.image_path else '',
-                'is_online': bool(self.is_online),
-                'last_seen': self.last_seen.isoformat() if self.last_seen else None,
-                'first_seen': self.first_seen.isoformat() if self.first_seen else None,
+                'id': int(self.id) if getattr(self, 'id', None) is not None else 0,
+                'hostname': str(self.hostname or '') if getattr(self, 'hostname', None) is not None else '',
+                'ip_address': str(self.ip_address or '') if getattr(self, 'ip_address', None) is not None else '',
+                'mac_address': str(self.mac_address or '') if getattr(self, 'mac_address', None) is not None else '',
+                'brand': str(self.brand or '') if getattr(self, 'brand', None) is not None else '',
+                'model': str(self.model or '') if getattr(self, 'model', None) is not None else '',
+                'icon': str(self.icon or 'device') if getattr(self, 'icon', None) is not None else 'device',
+                'image_path': str(self.image_path or '') if getattr(self, 'image_path', None) is not None else '',
+                'is_online': bool(getattr(self, 'is_online', False)),
+                'last_seen': self.last_seen.isoformat() if getattr(self, 'last_seen', None) else None,
+                'first_seen': self.first_seen.isoformat() if getattr(self, 'first_seen', None) else None,
                 'open_ports': open_ports,
-                'person_id': int(self.person_id) if self.person_id is not None else None,
+                'person_id': int(self.person_id) if getattr(self, 'person_id', None) is not None else None,
                 'merged_devices': merged_devices,
-                'os_info': str(self.os_info) if self.os_info else '',
-                'vendor': str(self.vendor) if self.vendor else '',
-                'device_type': str(self.device_type) if self.device_type else '',
-                'os_family': str(self.os_family) if self.os_family else '',
-                'netbios_name': str(self.netbios_name) if self.netbios_name else '',
-                'workgroup': str(self.workgroup) if self.workgroup else '',
+                'os_info': str(self.os_info or '') if getattr(self, 'os_info', None) is not None else '',
+                'vendor': str(self.vendor or '') if getattr(self, 'vendor', None) is not None else '',
+                'device_type': str(self.device_type or '') if getattr(self, 'device_type', None) is not None else '',
+                'os_family': str(self.os_family or '') if getattr(self, 'os_family', None) is not None else '',
+                'netbios_name': str(self.netbios_name or '') if getattr(self, 'netbios_name', None) is not None else '',
+                'workgroup': str(self.workgroup or '') if getattr(self, 'workgroup', None) is not None else '',
                 'services': services,
-                'category': str(self.category) if self.category else '',
-                'created_at': self.created_at.isoformat() if self.created_at else None,
-                'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+                'category': str(self.category or '') if getattr(self, 'category', None) is not None else '',
+                'created_at': self.created_at.isoformat() if getattr(self, 'created_at', None) else None,
+                'updated_at': self.updated_at.isoformat() if getattr(self, 'updated_at', None) else None,
                 'owner': owner
             }
             
             # Verify the result can be JSON serialized
             try:
                 json.dumps(result)
+                return result
             except Exception as e:
-                print(f"JSON serialization failed for device {self.id}: {e}")
+                print(f"JSON serialization verification failed for device {getattr(self, 'id', 'unknown')}: {e}")
                 # Return a minimal safe version
                 return {
-                    'id': int(self.id) if self.id is not None else 0,
-                    'hostname': str(self.hostname) if self.hostname else 'Unknown',
-                    'ip_address': str(self.ip_address) if self.ip_address else '',
-                    'mac_address': str(self.mac_address) if self.mac_address else '',
-                    'is_online': bool(self.is_online),
-                    'last_seen': self.last_seen.isoformat() if self.last_seen else None,
-                    'first_seen': self.first_seen.isoformat() if self.first_seen else None,
+                    'id': int(getattr(self, 'id', 0)),
+                    'hostname': str(getattr(self, 'hostname', 'Unknown')),
+                    'ip_address': str(getattr(self, 'ip_address', '')),
+                    'mac_address': str(getattr(self, 'mac_address', '')),
+                    'is_online': bool(getattr(self, 'is_online', False)),
+                    'last_seen': getattr(self, 'last_seen', datetime.utcnow()).isoformat() if getattr(self, 'last_seen', None) else None,
+                    'first_seen': getattr(self, 'first_seen', datetime.utcnow()).isoformat() if getattr(self, 'first_seen', None) else None,
                     'open_ports': [],
                     'person_id': None,
                     'merged_devices': [],
-                    'owner': None
+                    'owner': None,
+                    'brand': '',
+                    'model': '',
+                    'icon': 'device',
+                    'category': '',
+                    'vendor': '',
+                    'device_type': '',
+                    'os_info': '',
+                    'os_family': '',
+                    'netbios_name': '',
+                    'workgroup': '',
+                    'services': [],
+                    'image_path': '',
+                    'created_at': None,
+                    'updated_at': None
                 }
             
-            return result
-            
         except Exception as e:
-            print(f"Unexpected error in to_dict for device {self.id if hasattr(self, 'id') else 'unknown'}: {e}")
+            print(f"Unexpected error in to_dict for device {getattr(self, 'id', 'unknown')}: {e}")
             import traceback
             traceback.print_exc()
             # Return absolute minimal data
@@ -194,7 +221,21 @@ class Device(db.Model):
                 'open_ports': [],
                 'person_id': None,
                 'merged_devices': [],
-                'owner': None
+                'owner': None,
+                'brand': '',
+                'model': '',
+                'icon': 'device',
+                'category': '',
+                'vendor': '',
+                'device_type': '',
+                'os_info': '',
+                'os_family': '',
+                'netbios_name': '',
+                'workgroup': '',
+                'services': [],
+                'image_path': '',
+                'created_at': None,
+                'updated_at': None
             }
 
 class Person(db.Model):
