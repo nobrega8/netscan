@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  netscan:
+    build: .
+    container_name: netscan-app
+    ports:
+      - "2530:2530"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-netscan-docker-secret-key-change-me}
+      - NETSCAN_PORT=2530
+      - SCAN_INTERVAL_MINUTES=${SCAN_INTERVAL_MINUTES:-30}
+      - NETWORK_RANGE=${NETWORK_RANGE:-auto}
+      - NETSCAN_DISABLE_STARTUP_SCAN=${NETSCAN_DISABLE_STARTUP_SCAN:-true}
+      - NETSCAN_ENABLE_OS_DETECTION=${NETSCAN_ENABLE_OS_DETECTION:-false}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - netscan_data:/app/instance
+      - netscan_uploads:/app/static/uploads
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - netscan_network
+    # Enable host network for network scanning capabilities
+    # Comment out the networks section above and uncomment the line below if needed
+    # network_mode: host
+
+  redis:
+    image: redis:7-alpine
+    container_name: netscan-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - netscan_network
+    command: redis-server --appendonly yes
+
+volumes:
+  netscan_data:
+    driver: local
+  netscan_uploads:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  netscan_network:
+    driver: bridge

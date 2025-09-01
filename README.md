@@ -193,6 +193,113 @@ Access the web interface at: http://localhost:2530
 
 **Note**: For development on systems without the Prerequisites installed, you may encounter warnings about missing nmap or locale issues. Install the system dependencies as described in the Prerequisites section.
 
+### Docker Installation (Recommended for Easy Setup)
+
+Docker provides the easiest way to run NetScan with all dependencies pre-configured:
+
+#### Quick Start with Docker Compose
+
+```bash
+# Clone the repository
+git clone https://github.com/nobrega8/netscan.git
+cd netscan
+
+# Create environment file from template
+cp .env.docker.example .env
+
+# Edit the environment file (important: change default passwords!)
+nano .env
+
+# Start the application
+docker compose up -d
+
+# View logs
+docker compose logs -f netscan
+```
+
+Access the web interface at: http://localhost:2530
+
+#### Docker Environment Configuration
+
+Edit the `.env` file to customize your installation:
+
+```bash
+# Required: Change these for security
+SECRET_KEY=your-very-secure-secret-key-for-production
+ADMIN_PASSWORD=your-secure-admin-password
+
+# Optional: Customize settings
+SCAN_INTERVAL_MINUTES=30
+NETWORK_RANGE=auto
+NETSCAN_DISABLE_STARTUP_SCAN=true
+```
+
+#### Network Scanning Considerations
+
+For network scanning to work properly in Docker, you may need to use host networking:
+
+**Option 1: Host Network (Recommended for full functionality)**
+```bash
+# Edit docker-compose.yml and uncomment:
+# network_mode: host
+# Comment out the networks section
+
+docker compose up -d
+```
+
+**Option 2: Bridge Network (Default)**
+- Uses bridge networking (included in docker-compose.yml)
+- May have limited network discovery capabilities
+- Suitable for basic functionality testing
+
+#### Docker Management Commands
+
+```bash
+# Start services
+docker compose up -d
+
+# Stop services
+docker compose down
+
+# View logs
+docker compose logs -f netscan
+
+# Restart services
+docker compose restart netscan
+
+# Update to latest version
+git pull origin main
+docker compose build --no-cache
+docker compose up -d
+
+# Backup data
+docker compose exec netscan cp /app/instance/netscan.db /app/instance/netscan.db.backup
+
+# Clean up (removes data!)
+docker compose down -v
+```
+
+#### Development with Docker
+
+For development with auto-reload:
+
+```bash
+# Copy the development override file
+cp docker-compose.override.yml.example docker-compose.override.yml
+
+# Start in development mode
+docker compose up
+```
+
+#### Docker Components
+
+The Docker setup includes:
+
+- **NetScan Application**: Main Flask application with network scanning
+- **Redis**: Session storage and rate limiting backend
+- **Persistent Volumes**: Database and upload storage
+- **Health Checks**: Automatic container health monitoring
+
 ## Configuration
 
 ### Environment Variables

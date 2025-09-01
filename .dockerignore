@@ -1,0 +1,61 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env
+venv
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database (will be created in container)
+instance/
+*.db
+
+# Uploads (will be mounted as volume)
+static/uploads/*
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov/
+
+# Temporary files
+.tmp
+tmp/
+temp/
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# Local environment files
+.env.local
+.env.*.local
