@@ -17,3 +17,5 @@ class Config:
     
     # Scanning configuration
     ENABLE_OS_DETECTION = os.environ.get('ENABLE_OS_DETECTION', 'false').lower() == 'true'
+    # Additional security: disable privileged scans by default
+    ENABLE_SYN_SCAN = os.environ.get('ENABLE_SYN_SCAN', 'false').lower() == 'true'

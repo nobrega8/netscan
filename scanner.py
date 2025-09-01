@@ -20,10 +20,11 @@ class EnhancedNetworkScanner:
             print(f"Warning: Could not initialize nmap scanner: {e}")
             self.nm = None
         
-        # Enhanced scanning options (using TCP connect scan to avoid requiring root)
+        # Enhanced scanning options (configurable based on privileges)
+        port_scan_method = '-sS' if Config.ENABLE_SYN_SCAN else '-sT'  # SYN scan requires root, TCP connect doesn't
         self.scan_options = {
             'host_discovery': '-sn -T4 --min-parallelism 100',
-            'port_scan': '-sT -Pn -T4 --host-timeout 3s -p 22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017',
+            'port_scan': f'{port_scan_method} -Pn -T4 --host-timeout 3s -p 22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017',
             'service_detection': '-sV --version-intensity 5',
             'os_detection': '-O --osscan-guess',
             'fast_scan': '-F -T4'
