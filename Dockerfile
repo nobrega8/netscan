@@ -23,11 +23,7 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && \
 ENV LANG=en_US.UTF-8
 ENV LC_CTYPE=en_US.UTF-8
 
-# Enable nmap SYN scans without root privileges
-RUN setcap cap_net_raw,cap_net_admin+eip /usr/bin/nmap
-
-# Create app user and directory
-RUN useradd --create-home --shell /bin/bash app
+# Create app directory
 WORKDIR /app
 
 # Copy requirements first for better caching
@@ -42,12 +38,6 @@ COPY . .
 
 # Create necessary directories
 RUN mkdir -p instance static/uploads
-
-# Set ownership of application files
-RUN chown -R app:app /app
-
-# Switch to app user
-USER app
 
 # Set Flask app
 ENV FLASK_APP=app.py
