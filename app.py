@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, Response
 from flask_migrate import Migrate
 from flask_login import LoginManager, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
@@ -1104,6 +1104,428 @@ def speed_test_full():
 
 # Add rate limiting to login route
 limiter.limit("5 per minute")(auth_bp.view_functions['login'])
+
+# Enhanced API endpoints for improved UI/UX
+@app.route('/api/scan/start', methods=['POST'])
+@login_required
+def api_scan_start():
+    """Start network scan with progress tracking"""
+    try:
+        from tasks import start_network_scan
+        
+        # Get network range from request if provided
+        data = request.get_json() or {}
+        network_range = data.get('network_range')
+        
+        # Start async scan
+        task_id = start_network_scan(network_range)
+        
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Network scan started'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/scan/progress/<task_id>')
+@login_required 
+def api_scan_progress(task_id):
+    """Get scan progress"""
+    try:
+        from tasks import get_scan_progress
+        
+        progress = get_scan_progress(task_id)
+        if progress:
+            return jsonify(progress)
+        else:
+            return jsonify({'error': 'Task not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks')
+@login_required
+def api_tasks():
+    """Get all tasks summary"""
+    try:
+        from tasks import task_manager
+        
+        summary = task_manager.get_task_summary()
+        tasks = []
+        
+        for task_id, task in task_manager.get_all_tasks().items():
+            tasks.append({
+                'id': task.id,
+                'name': task.name,
+                'status': task.status.value,
+                'progress': task.progress,
+                'message': task.message,
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'started_at': task.started_at.isoformat() if task.started_at else None,
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None
+            })
+        
+        return jsonify({
+            'summary': summary,
+            'tasks': tasks[-10:]  # Last 10 tasks
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/devices/table')
+@login_required
+def api_devices_table():
+    """Get devices data for table updates"""
+    try:
+        devices = Device.query.order_by(Device.last_seen.desc()).limit(10).all()
+        device_data = []
+        
+        for device in devices:
+            device_data.append({
+                'id': device.id,
+                'hostname': device.hostname,
+                'ip_address': device.ip_address,
+                'mac_address': device.mac_address,
+                'brand': device.brand,
+                'vendor': device.vendor,
+                'is_online': device.is_online,
+                'last_seen': device.last_seen.isoformat() if device.last_seen else None,
+                'owner': {'name': device.owner.name} if device.owner else None,
+                'icon': device.icon,
+                'device_type': device.device_type
+            })
+        
+        return jsonify(device_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/devices/merge', methods=['POST'])
+@login_required
+@requires_permission('editor')
+def api_devices_merge():
+    """Merge multiple devices"""
+    try:
+        data = request.get_json()
+        device_ids = data.get('device_ids', [])
+        
+        if len(device_ids) < 2:
+            return jsonify({'success': False, 'error': 'At least 2 devices required for merging'})
+        
+        devices = Device.query.filter(Device.id.in_(device_ids)).all()
+        if len(devices) != len(device_ids):
+            return jsonify({'success': False, 'error': 'Some devices not found'})
+        
+        # Use the first device as the primary
+        primary_device = devices[0]
+        mac_addresses = [primary_device.mac_address]
+        
+        # Collect all MAC addresses from devices to be merged
+        for device in devices[1:]:
+            mac_addresses.append(device.mac_address)
+            # Add any already merged MAC addresses
+            if device.merged_devices:
+                try:
+                    existing_macs = json.loads(device.merged_devices)
+                    mac_addresses.extend(existing_macs)
+                except:
+                    pass
+        
+        # Update primary device with merged MAC addresses
+        primary_device.merged_devices = json.dumps(list(set(mac_addresses[1:])))  # Exclude primary MAC
+        
+        # Delete the other devices
+        for device in devices[1:]:
+            db.session.delete(device)
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'Merged {len(devices)} devices successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/devices/<int:device_id>/scan', methods=['POST'])
+@login_required
+def api_device_scan(device_id):
+    """Scan specific device for open ports"""
+    try:
+        from tasks import start_device_port_scan
+        
+        # Start async port scan
+        task_id = start_device_port_scan(device_id)
+        
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Device port scan started'
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/export/devices')
+@login_required
+def api_export_devices():
+    """Export devices in various formats"""
+    try:
+        format_type = request.args.get('format', 'csv').lower()
+        devices = Device.query.all()
+        
+        if format_type == 'csv':
+            import csv
+            import io
+            
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Header
+            writer.writerow([
+                'ID', 'Hostname', 'IP Address', 'MAC Address', 'Brand', 'Vendor',
+                'Device Type', 'OS Info', 'Online', 'First Seen', 'Last Seen',
+                'Open Ports', 'Owner'
+            ])
+            
+            # Data
+            for device in devices:
+                writer.writerow([
+                    device.id,
+                    device.hostname or '',
+                    device.ip_address or '',
+                    device.mac_address or '',
+                    device.brand or '',
+                    device.vendor or '',
+                    device.device_type or '',
+                    device.os_info or '',
+                    'Yes' if device.is_online else 'No',
+                    device.first_seen.isoformat() if device.first_seen else '',
+                    device.last_seen.isoformat() if device.last_seen else '',
+                    device.open_ports or '',
+                    device.owner.name if device.owner else ''
+                ])
+            
+            output.seek(0)
+            return Response(
+                output.getvalue(),
+                mimetype='text/csv',
+                headers={'Content-Disposition': 'attachment;filename=netscan_devices.csv'}
+            )
+            
+        elif format_type == 'json':
+            device_data = []
+            for device in devices:
+                device_data.append({
+                    'id': device.id,
+                    'hostname': device.hostname,
+                    'ip_address': device.ip_address,
+                    'mac_address': device.mac_address,
+                    'brand': device.brand,
+                    'vendor': device.vendor,
+                    'device_type': device.device_type,
+                    'os_info': device.os_info,
+                    'is_online': device.is_online,
+                    'first_seen': device.first_seen.isoformat() if device.first_seen else None,
+                    'last_seen': device.last_seen.isoformat() if device.last_seen else None,
+                    'open_ports': json.loads(device.open_ports) if device.open_ports else [],
+                    'owner': device.owner.name if device.owner else None
+                })
+            
+            return jsonify(device_data)
+            
+        else:
+            return jsonify({'error': 'Unsupported format'}), 400
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recent-changes')
+@login_required
+def api_recent_changes():
+    """Get recent device changes"""
+    try:
+        # Get devices that changed in the last 24 hours
+        since = datetime.utcnow() - timedelta(hours=24)
+        recent_scans = Scan.query.filter(Scan.timestamp >= since).order_by(Scan.timestamp.desc()).limit(10).all()
+        
+        changes = []
+        for scan in recent_scans:
+            device = Device.query.get(scan.device_id)
+            if device:
+                changes.append({
+                    'timestamp': scan.timestamp.isoformat(),
+                    'device': {
+                        'hostname': device.hostname,
+                        'ip_address': device.ip_address,
+                        'mac_address': device.mac_address
+                    },
+                    'status': 'online' if scan.is_online else 'offline',
+                    'type': 'status_change'
+                })
+        
+        if not changes:
+            changes.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'message': 'No recent changes',
+                'type': 'info'
+            })
+        
+        # Return HTML for HTMX
+        html = '<div class="space-y-2">'
+        for change in changes:
+            if change.get('type') == 'info':
+                html += f'<div class="text-center text-base-content/50 py-4">{change["message"]}</div>'
+            else:
+                status_class = 'text-success' if change['status'] == 'online' else 'text-error'
+                html += f'''
+                <div class="flex items-center justify-between p-3 bg-base-100 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-2 h-2 rounded-full bg-{"success" if change["status"] == "online" else "error"}"></div>
+                        <div>
+                            <div class="font-medium">{change["device"]["hostname"] or "Unknown"}</div>
+                            <div class="text-sm text-base-content/70">{change["device"]["ip_address"]}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm {status_class} capitalize">{change["status"]}</div>
+                        <div class="text-xs text-base-content/50">{datetime.fromisoformat(change["timestamp"]).strftime("%H:%M")}</div>
+                    </div>
+                </div>
+                '''
+        html += '</div>'
+        
+        return html
+        
+    except Exception as e:
+        return f'<div class="text-error">Error loading changes: {str(e)}</div>'
+
+@app.route('/api/sse/dashboard')
+@login_required
+def api_sse_dashboard():
+    """Server-Sent Events for dashboard updates"""
+    def event_stream():
+        from tasks import task_manager
+        
+        # Send initial connection message
+        yield f"data: {json.dumps({'type': 'connected', 'message': 'Connected to dashboard updates'})}\n\n"
+        
+        # Monitor for scan tasks and send updates
+        last_update = time.time()
+        
+        while True:
+            try:
+                current_time = time.time()
+                
+                # Check for active scan tasks
+                active_scans = []
+                for task_id, task in task_manager.get_all_tasks().items():
+                    if task.status.value == 'running' and 'scan' in task.name.lower():
+                        active_scans.append({
+                            'task_id': task_id,
+                            'name': task.name,
+                            'progress': task.progress,
+                            'message': task.message
+                        })
+                
+                # Send scan progress updates
+                if active_scans:
+                    for scan in active_scans:
+                        data = {
+                            'type': 'scan_progress',
+                            'progress': scan['progress'],
+                            'status': scan['message'],
+                            'task_id': scan['task_id']
+                        }
+                        yield f"data: {json.dumps(data)}\n\n"
+                
+                # Send heartbeat every 30 seconds
+                if current_time - last_update > 30:
+                    data = {
+                        'type': 'heartbeat', 
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'active_scans': len(active_scans)
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                    last_update = current_time
+                
+                time.sleep(2)  # Check every 2 seconds
+                
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                break
+    
+    return Response(event_stream(), mimetype='text/event-stream',
+                   headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'})
+
+@app.route('/api/oui/update', methods=['POST'])
+@login_required
+@requires_permission('admin')
+def api_oui_update():
+    """Update OUI database"""
+    try:
+        from tasks import start_oui_update
+        
+        task_id = start_oui_update()
+        
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'OUI database update started'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/metrics')
+@login_required
+def api_metrics():
+    """Prometheus-style metrics endpoint"""
+    try:
+        # Device metrics
+        total_devices = Device.query.count()
+        online_devices = Device.query.filter_by(is_online=True).count()
+        offline_devices = total_devices - online_devices
+        
+        # Recent scan metrics
+        recent_scans = Scan.query.filter(
+            Scan.timestamp >= datetime.utcnow() - timedelta(hours=24)
+        ).count()
+        
+        # Task metrics
+        from tasks import task_manager
+        task_summary = task_manager.get_task_summary()
+        
+        # Generate Prometheus format
+        metrics = []
+        metrics.append('# HELP netscan_devices_total Total number of discovered devices')
+        metrics.append('# TYPE netscan_devices_total gauge')
+        metrics.append(f'netscan_devices_total {total_devices}')
+        
+        metrics.append('# HELP netscan_devices_online Number of online devices')
+        metrics.append('# TYPE netscan_devices_online gauge')
+        metrics.append(f'netscan_devices_online {online_devices}')
+        
+        metrics.append('# HELP netscan_devices_offline Number of offline devices')
+        metrics.append('# TYPE netscan_devices_offline gauge')
+        metrics.append(f'netscan_devices_offline {offline_devices}')
+        
+        metrics.append('# HELP netscan_scans_24h Number of scans in last 24 hours')
+        metrics.append('# TYPE netscan_scans_24h counter')
+        metrics.append(f'netscan_scans_24h {recent_scans}')
+        
+        for status, count in task_summary.items():
+            metrics.append(f'# HELP netscan_tasks_{status} Number of {status} tasks')
+            metrics.append(f'# TYPE netscan_tasks_{status} gauge')
+            metrics.append(f'netscan_tasks_{status} {count}')
+        
+        return Response('\n'.join(metrics), mimetype='text/plain')
+        
+    except Exception as e:
+        return Response(f'# Error generating metrics: {str(e)}', mimetype='text/plain'), 500
 
 # Initialize database and create admin user
 def initialize_app():
