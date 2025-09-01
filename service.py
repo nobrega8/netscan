@@ -58,8 +58,8 @@ class NetScanService:
         print("Background service started.")
         
         # Start Flask app
-        print("Starting web interface on http://0.0.0.0:5000")
-        self.app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+        print(f"Starting web interface on http://0.0.0.0:{Config.NETSCAN_PORT}")
+        self.app.run(host='0.0.0.0', port=Config.NETSCAN_PORT, debug=False, threaded=True)
     
     def stop(self):
         """Stop the background service"""

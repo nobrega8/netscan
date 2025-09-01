@@ -5,6 +5,9 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///netscan.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
+    # Network configuration
+    NETSCAN_PORT = int(os.environ.get('NETSCAN_PORT', 2530))
+    
     # Scan configuration
     SCAN_INTERVAL_MINUTES = int(os.environ.get('SCAN_INTERVAL_MINUTES', 30))
     NETWORK_RANGE = os.environ.get('NETWORK_RANGE', 'auto')  # auto-detect or specify like '192.168.1.0/24'

@@ -75,11 +75,34 @@ Access the web interface at: http://localhost:2530
 NetScan supports the following environment variables:
 
 - `SECRET_KEY`: Flask secret key for sessions (required for production)
+- `NETSCAN_PORT`: Port for the web service (default: 2530)
 - `ADMIN_USERNAME`: Default admin username (default: 'admin')  
 - `ADMIN_PASSWORD`: Default admin password (default: 'admin123')
 - `DATABASE_URL`: Database connection string (default: SQLite)
 - `SCAN_INTERVAL_MINUTES`: Auto-scan interval (default: 30)
 - `NETWORK_RANGE`: Network range to scan (default: auto-detect)
+
+#### Example Configuration
+
+Create a `.env` file in the project root (copy from `.env.example`):
+
+```bash
+# Copy example configuration
+cp .env.example .env
+
+# Edit the configuration
+nano .env
+```
+
+Example `.env` file:
+```bash
+SECRET_KEY=your-long-random-secret-key-here
+NETSCAN_PORT=2530
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your-secure-password
+SCAN_INTERVAL_MINUTES=30
+NETWORK_RANGE=auto
+```
 
 ### Raspberry Pi Service Installation
 
@@ -159,6 +182,81 @@ If you encounter database-related errors after an update:
 4. **Reset migrations** (last resort): Delete the database and run `flask db upgrade`
 
 For production deployments, database migrations ensure safe schema evolution without data loss.
+
+### Troubleshooting
+
+#### Port Configuration Issues
+
+If the service is not accessible:
+
+1. **Check the port**: NetScan runs on port 2530 by default
+   ```bash
+   # Check if the service is running
+   sudo systemctl status netscan
+   
+   # Check if port is in use
+   sudo netstat -tlnp | grep 2530
+   ```
+
+2. **Change port if needed**: Set `NETSCAN_PORT` environment variable
+   ```bash
+   # For systemd service
+   sudo systemctl edit netscan
+   # Add:
+   # [Service]
+   # Environment="NETSCAN_PORT=8080"
+   
+   # For development
+   export NETSCAN_PORT=8080
+   python3 app.py
+   ```
+
+3. **Firewall issues**: Ensure the port is not blocked
+   ```bash
+   # Ubuntu/Debian
+   sudo ufw allow 2530
+   
+   # CentOS/RHEL
+   sudo firewall-cmd --add-port=2530/tcp --permanent
+   ```
+
+#### Service Issues
+
+1. **Service won't start**: Check logs
+   ```bash
+   sudo journalctl -u netscan -f
+   ```
+
+2. **Permission issues**: Ensure correct ownership
+   ```bash
+   sudo chown -R netscan:netscan /opt/netscan
+   ```
+
+3. **Database errors**: Reset database (last resort)
+   ```bash
+   rm instance/netscan.db
+   export FLASK_APP=app.py
+   flask db upgrade
+   ```
+
+#### Update Issues
+
+1. **Update fails**: Check update logs
+   ```bash
+   tail -f update.log
+   ```
+
+2. **Git conflicts**: Resolve manually
+   ```bash
+   git status
+   git stash  # save local changes
+   git pull origin main
+   ```
+
+3. **Dependency issues**: Reinstall requirements
+   ```bash
+   pip install -r requirements.txt --force-reinstall
+   ```
 
 ## Configuration
 
