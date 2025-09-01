@@ -905,13 +905,15 @@ def new_person():
                 email=email if email else None
             )
             
+            # Add person to session first (needed for ID generation if file upload)
+            db.session.add(person)
+            
             # Handle profile photo upload
             if 'profile_photo' in request.files:
                 file = request.files['profile_photo']
                 if file and file.filename:
                     if allowed_file(file.filename):
-                        db.session.add(person)  # Add first to get the ID
-                        db.session.flush()  # Flush to get the ID without committing
+                        db.session.flush()  # Flush to get the ID for file naming
                         
                         filename = secure_filename(f"person_{person.id}_{file.filename}")
                         upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
@@ -925,9 +927,6 @@ def new_person():
                     else:
                         flash('Invalid file type. Please upload PNG or JPG images only.', 'error')
                         return render_template('new_person.html'), 422
-            else:
-                # No file upload, just add the person
-                db.session.add(person)
             
             db.session.commit()
             flash(f'Person "{name}" added successfully.', 'success')
