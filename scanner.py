@@ -5,6 +5,7 @@ import json
 import subprocess
 from datetime import datetime
 from models import Device, Scan, OUI, db
+from config import Config
 import re
 import threading
 import time
@@ -19,10 +20,11 @@ class EnhancedNetworkScanner:
             print(f"Warning: Could not initialize nmap scanner: {e}")
             self.nm = None
         
-        # Enhanced scanning options (using TCP connect scan to avoid requiring root)
+        # Enhanced scanning options (configurable based on privileges)
+        port_scan_method = '-sS' if Config.ENABLE_SYN_SCAN else '-sT'  # SYN scan requires root, TCP connect doesn't
         self.scan_options = {
             'host_discovery': '-sn -T4 --min-parallelism 100',
-            'port_scan': '-sT -Pn -T4 --host-timeout 3s -p 22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017',
+            'port_scan': f'{port_scan_method} -Pn -T4 --host-timeout 3s -p 22,23,25,53,80,110,143,443,993,995,21,139,445,3389,5900,8080,8443,3306,5432,1433,6379,27017',
             'service_detection': '-sV --version-intensity 5',
             'os_detection': '-O --osscan-guess',
             'fast_scan': '-F -T4'
@@ -196,19 +198,23 @@ class EnhancedNetworkScanner:
                             }
                             result['services'].append(service_info)
                 
-                # Try OS detection
-                try:
-                    self.nm.scan(ip, arguments=self.scan_options['os_detection'])
-                    if ip in self.nm.all_hosts() and 'osclass' in self.nm[ip]:
-                        os_classes = self.nm[ip]['osclass']
-                        if os_classes:
-                            best_os = max(os_classes, key=lambda x: float(x.get('accuracy', 0)))
-                            result['os_info'] = f"{best_os.get('osfamily', '')} {best_os.get('osgen', '')}".strip()
-                            
-                            # Determine device type from OS info
-                            result['device_type'] = self._determine_device_type(result['os_info'], result['services'])
-                except Exception as e:
-                    print(f"OS detection failed for {ip}: {e}")
+                # Try OS detection (only if enabled in config)
+                if Config.ENABLE_OS_DETECTION:
+                    try:
+                        self.nm.scan(ip, arguments=self.scan_options['os_detection'])
+                        if ip in self.nm.all_hosts() and 'osclass' in self.nm[ip]:
+                            os_classes = self.nm[ip]['osclass']
+                            if os_classes:
+                                best_os = max(os_classes, key=lambda x: float(x.get('accuracy', 0)))
+                                result['os_info'] = f"{best_os.get('osfamily', '')} {best_os.get('osgen', '')}".strip()
+                                
+                                # Determine device type from OS info
+                                result['device_type'] = self._determine_device_type(result['os_info'], result['services'])
+                    except Exception as e:
+                        print(f"OS detection failed for {ip}: {e}")
+                else:
+                    # If OS detection is disabled, try to determine device type from services only
+                    result['device_type'] = self._determine_device_type(None, result['services'])
         
         except Exception as e:
             print(f"Service detection failed for {ip}: {e}")
@@ -486,7 +492,6 @@ class EnhancedNetworkScanner:
         # Record scan result
         scan = Scan(
             device_id=device.id if device.id else None,
-            device=device,
             is_online=True,
             ip_address=device_info.get('ip_address'),
             timestamp=datetime.utcnow()
@@ -648,7 +653,7 @@ class NetworkScanner(EnhancedNetworkScanner):
             
             # Record offline scan
             scan = Scan(
-                device=device,
+                device_id=device.id,
                 is_online=False,
                 ip_address=device.ip_address,
                 timestamp=datetime.utcnow()
