@@ -5,6 +5,16 @@ class Config:
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///netscan.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
+    # SQLite WAL mode and busy timeout configuration to prevent database locking
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "connect_args": {
+            "timeout": 30,
+            "check_same_thread": False
+        },
+        "pool_pre_ping": True,
+        "pool_recycle": 300
+    }
+    
     # Network configuration
     NETSCAN_PORT = int(os.environ.get('NETSCAN_PORT', 2530))
     
@@ -15,7 +25,7 @@ class Config:
     # OUI database
     OUI_UPDATE_URL = 'http://standards-oui.ieee.org/oui/oui.txt'
     
-    # Scanning configuration - enabled by default for advanced analysis
-    ENABLE_OS_DETECTION = os.environ.get('ENABLE_OS_DETECTION', 'true').lower() == 'true'
-    # Enable SYN scanning by default (requires root privileges)
-    ENABLE_SYN_SCAN = os.environ.get('ENABLE_SYN_SCAN', 'true').lower() == 'true'
+    # Scanning configuration - disable OS detection by default (requires root privileges)
+    ENABLE_OS_DETECTION = os.environ.get('ENABLE_OS_DETECTION', 'false').lower() == 'true'
+    # Disable SYN scanning by default (requires root privileges)
+    ENABLE_SYN_SCAN = os.environ.get('ENABLE_SYN_SCAN', 'false').lower() == 'true'

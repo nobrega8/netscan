@@ -489,9 +489,12 @@ class EnhancedNetworkScanner:
             )
             db.session.add(device)
         
+        # Ensure device is committed and has an ID before creating scan
+        db.session.flush()
+        
         # Record scan result
         scan = Scan(
-            device_id=device.id if device.id else None,
+            device_id=device.id,
             is_online=True,
             ip_address=device_info.get('ip_address'),
             timestamp=datetime.utcnow()
@@ -1189,18 +1192,20 @@ class NetworkScanner(EnhancedNetworkScanner):
                 )
                 db.session.add(device)
             
+            # Ensure device is committed and has an ID before creating scan
+            db.session.flush()
+            
             # Record scan (only include ports if provided)
             scan_open_ports = device_info.get('open_ports')
             scan = Scan(
-                device_id=device.id if device.id else None,
+                device_id=device.id,
                 ip_address=device_info['ip_address'],
                 is_online=True,
                 open_ports=json.dumps(scan_open_ports) if scan_open_ports is not None else None,
                 timestamp=device_info['timestamp']
             )
             
-            if device.id:  # Only add scan if device exists
-                db.session.add(scan)
+            db.session.add(scan)
             
             db.session.commit()
             
