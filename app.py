@@ -925,8 +925,10 @@ def new_person():
                     else:
                         flash('Invalid file type. Please upload PNG or JPG images only.', 'error')
                         return render_template('new_person.html'), 422
+            else:
+                # No file upload, just add the person
+                db.session.add(person)
             
-            db.session.add(person)
             db.session.commit()
             flash(f'Person "{name}" added successfully.', 'success')
             return redirect(url_for('people'))
@@ -1351,6 +1353,8 @@ def api_scan_start():
             'network_range': network_range or 'auto-detected'
         })
     except ImportError as e:
+        # Log the specific import error for debugging
+        print(f"Import error in scan API: {e}")
         return jsonify({
             'success': False,
             'error': 'Scan functionality not available. Please check server configuration.'

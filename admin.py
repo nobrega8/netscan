@@ -40,7 +40,7 @@ def role_required(required_role):
 # Forms
 class UserForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired(), Length(min=3, max=80)])
-    password = PasswordField('Password', validators=[Length(min=8, max=255)])
+    password = PasswordField('Password', validators=[Optional(), Length(min=8, max=255)])
     role = SelectField('Role', choices=[
         (UserRole.VIEWER.value, 'Viewer'),
         (UserRole.EDITOR.value, 'Editor'),
@@ -57,12 +57,17 @@ class UserForm(FlaskForm):
         user = User.query.filter_by(username=username.data).first()
         if user and user != self.user:
             raise ValidationError('Username already exists.')
+    
+    def validate_password(self, password):
+        # For new users, password can be empty (will generate random)
+        # For existing users, if password is provided, it must meet length requirements
+        if password.data and len(password.data) < 8:
+            raise ValidationError('Password must be at least 8 characters long.')
 
 class EditUserForm(UserForm):
     def __init__(self, user, *args, **kwargs):
         super(EditUserForm, self).__init__(user, *args, **kwargs)
-        # Password is optional for edit
-        self.password.validators = [Optional(), Length(min=8, max=255)]
+        # Password validation is already handled by the parent class
 
 # Routes
 @admin_bp.route('/users')
