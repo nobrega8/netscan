@@ -3,59 +3,57 @@
 {% block title %}People - NetScan{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="flex justify-between items-center mb-4">
     <h2>People</h2>
     <a href="{{ url_for('new_person') }}" class="btn btn-primary btn-standard">
-        <i class="fas fa-plus"></i>Add Person
+        <i class="fas fa-plus me-2"></i>Add Person
     </a>
 </div>
 
-<div class="row">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
     {% for person in people %}
-    <div class="col-md-6 col-lg-4 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <div class="text-center mb-3">
-                    {% if person.image_path %}
-                        <img src="{{ url_for('uploaded_file', filename=person.image_path) }}" 
-                             alt="Profile Photo" class="avatar avatar-large" style="object-fit: cover;">
-                    {% else %}
-                        <div class="avatar avatar-large avatar-initials" 
-                             data-identifier="{{ person.name + person.email if person.email else person.name }}">
-                            {{ person.name[0]|upper }}
-                        </div>
-                    {% endif %}
-                </div>
-                <h5 class="card-title text-center">
-                    {{ person.name }}
-                </h5>
-                {% if person.email %}
-                    <p class="card-text text-center">
-                        <i class="fas fa-envelope me-2"></i>{{ person.email }}
-                    </p>
+    <div class="card bg-base-200 shadow-sm">
+        <div class="card-body">
+            <div class="text-center mb-3">
+                {% if person.image_path %}
+                    <img src="{{ url_for('uploaded_file', filename=person.image_path) }}" 
+                         alt="Profile Photo" class="w-16 h-16 rounded-full mx-auto object-cover">
+                {% else %}
+                    <div class="w-16 h-16 rounded-full mx-auto bg-primary text-primary-content flex items-center justify-center text-2xl font-bold" 
+                         data-identifier="{{ person.name + person.email if person.email else person.name }}">
+                        {{ person.name[0]|upper }}
+                    </div>
                 {% endif %}
-                <p class="card-text text-center">
-                    <strong>{{ person.devices | length }}</strong> device(s)
+            </div>
+            <h5 class="card-title text-center">
+                {{ person.name }}
+            </h5>
+            {% if person.email %}
+                <p class="text-center text-base-content/70">
+                    <i class="fas fa-envelope me-2"></i>{{ person.email }}
                 </p>
-                <div class="mb-2">
-                    {% for device in person.devices[:3] %}
-                        <span class="badge bg-{% if device.is_online %}success{% else %}secondary{% endif %} me-1">
-                            {% if device.brand and device.model %}
-                                {{ device.brand }} {{ device.model }}
-                            {% else %}
-                                {{ device.hostname or device.mac_address[:8] }}
-                            {% endif %}
-                        </span>
-                    {% endfor %}
-                    {% if person.devices | length > 3 %}
-                        <span class="badge bg-info">+{{ person.devices | length - 3 }}</span>
-                    {% endif %}
-                </div>
-                <div class="text-center">
-                    <a href="{{ url_for('person_detail', person_id=person.id) }}" class="btn btn-primary btn-standard btn-sm">
-                        <i class="fas fa-eye"></i>View Details
-                    </a>
-                </div>
+            {% endif %}
+            <p class="text-center">
+                <strong>{{ person.devices | length }}</strong> device(s)
+            </p>
+            <div class="mb-2 text-center">
+                {% for device in person.devices[:3] %}
+                    <span class="badge badge-{% if device.is_online %}success{% else %}ghost{% endif %} me-1">
+                        {% if device.brand and device.model %}
+                            {{ device.brand }} {{ device.model }}
+                        {% else %}
+                            {{ device.hostname or device.mac_address[:8] }}
+                        {% endif %}
+                    </span>
+                {% endfor %}
+                {% if person.devices | length > 3 %}
+                    <span class="badge badge-info">+{{ person.devices | length - 3 }}</span>
+                {% endif %}
+            </div>
+            <div class="text-center">
+                <a href="{{ url_for('person_detail', person_id=person.id) }}" class="btn btn-primary btn-standard btn-sm">
+                    <i class="fas fa-eye me-2"></i>View Details
+                </a>
             </div>
         </div>
     </div>
@@ -63,11 +61,11 @@
 </div>
 
 {% if not people %}
-<div class="text-center py-5">
-    <i class="fas fa-users fa-3x text-muted mb-3"></i>
-    <h4>No people added yet</h4>
-    <p class="text-muted">Add people to track their devices and see activity timelines.</p>
-    <a href="{{ url_for('new_person') }}" class="btn btn-primary">
+<div class="text-center py-8">
+    <i class="fas fa-users text-6xl text-base-content/30 mb-4"></i>
+    <h4 class="text-xl font-semibold mb-2">No people added yet</h4>
+    <p class="text-base-content/70 mb-4">Add people to track their devices and see activity timelines.</p>
+    <a href="{{ url_for('new_person') }}" class="btn btn-primary btn-standard">
         <i class="fas fa-plus me-2"></i>Add First Person
     </a>
 </div>
