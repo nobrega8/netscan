@@ -62,21 +62,71 @@
     <div class="col-md-4">
         <div class="card mb-4">
             <div class="card-header">
-                <h5><i class="fas fa-info-circle me-2"></i>System Information</h5>
+                <h5><i class="fas fa-code-branch me-2"></i>System Update</h5>
             </div>
             <div class="card-body">
-                <p><strong>Version:</strong> 1.1.2</p>
-                <p><strong>Repository:</strong> nobrega8/netscan</p>
-                <p><strong>Last Updated:</strong> {{ last_updated or 'Unknown' }}</p>
+                <p class="text-muted">Update NetScan to the latest version from GitHub.</p>
+                
+                {% if update_status %}
+                <div class="mb-3">
+                    <p><strong>Last Update:</strong> 
+                        {% if update_status.last_update %}
+                            {{ update_status.last_update | replace('T', ' ') | replace('Z', '') }}
+                        {% else %}
+                            Never
+                        {% endif %}
+                    </p>
+                    
+                    <p><strong>Status:</strong> 
+                        {% if update_status.status == 'success' %}
+                            <span class="badge bg-success">Success</span>
+                        {% elif update_status.status == 'error' %}
+                            <span class="badge bg-danger">Error</span>
+                        {% elif update_status.status == 'running' %}
+                            <span class="badge bg-warning">Running</span>
+                        {% else %}
+                            <span class="badge bg-secondary">{{ update_status.status|title }}</span>
+                        {% endif %}
+                    </p>
+                    
+                    {% if update_status.current_commit %}
+                    <p><strong>Current Version:</strong> <code>{{ update_status.current_commit }}</code></p>
+                    {% endif %}
+                    
+                    {% if update_status.message %}
+                    <p><strong>Message:</strong> {{ update_status.message }}</p>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p><strong>Last Update:</strong> Unknown</p>
+                {% endif %}
                 
                 <div class="d-grid gap-2">
-                    <button class="btn btn-success" onclick="updateSystem()">
+                    <button class="btn btn-success" onclick="updateSystem()" id="updateBtn">
                         <i class="fas fa-sync-alt me-2"></i>Update System
+                    </button>
+                    <button class="btn btn-outline-info" onclick="checkUpdateStatus()">
+                        <i class="fas fa-info-circle me-2"></i>Check Status
                     </button>
                     <a href="https://github.com/nobrega8/netscan" target="_blank" class="btn btn-outline-primary">
                         <i class="fab fa-github me-2"></i>View on GitHub
                     </a>
                 </div>
+            </div>
+        </div>
+        
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5><i class="fas fa-server me-2"></i>System Information</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Version:</strong> 1.1.2</p>
+                <p><strong>Repository:</strong> nobrega8/netscan</p>
+                <p><strong>Service Port:</strong> {{ config.NETSCAN_PORT or 2530 }}</p>
+                <p><strong>Service URL:</strong> <a href="http://localhost:{{ config.NETSCAN_PORT or 2530 }}" target="_blank">http://localhost:{{ config.NETSCAN_PORT or 2530 }}</a></p>
+                <p><strong>Database:</strong> {{ config.SQLALCHEMY_DATABASE_URI | replace('sqlite:///', '') | default('SQLite') }}</p>
+                <p><strong>Scan Interval:</strong> {{ current_settings.scan_interval }} minutes</p>
+                <p><strong>Network Range:</strong> {{ current_settings.network_range }}</p>
             </div>
         </div>
         
@@ -134,23 +184,77 @@ function updateSystem() {
     button.disabled = true;
     button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Updating...';
     
-    fetch('/update_system', { method: 'POST' })
+    fetch('/update_system', { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('System updated successfully! The service will restart shortly.');
-                setTimeout(() => location.reload(), 3000);
+                showAlert('success', 'System updated successfully! The service will restart shortly.');
+                // Refresh page after a delay to show updated status
+                setTimeout(() => location.reload(), 5000);
             } else {
-                alert(`Update failed: ${data.error}`);
+                showAlert('danger', `Update failed: ${data.error}`);
+                if (data.log) {
+                    console.log('Update log:', data.log);
+                }
             }
         })
         .catch(error => {
-            alert(`Error: ${error}`);
+            showAlert('danger', `Network error: ${error}`);
         })
         .finally(() => {
             button.disabled = false;
             button.innerHTML = originalText;
         });
+}
+
+function checkUpdateStatus() {
+    fetch('/update_status', { method: 'GET' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showAlert('warning', `Error getting status: ${data.error}`);
+            } else {
+                let statusMsg = `Status: ${data.status}`;
+                if (data.current_commit) {
+                    statusMsg += `\\nVersion: ${data.current_commit}`;
+                }
+                if (data.last_update) {
+                    statusMsg += `\\nLast update: ${data.last_update}`;
+                }
+                if (data.message) {
+                    statusMsg += `\\nMessage: ${data.message}`;
+                }
+                alert(statusMsg);
+            }
+        })
+        .catch(error => {
+            showAlert('danger', `Error checking status: ${error}`);
+        });
+}
+
+function showAlert(type, message) {
+    // Remove existing alerts
+    const existingAlerts = document.querySelectorAll('.alert');
+    existingAlerts.forEach(alert => alert.remove());
+    
+    // Create new alert
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insert after the main content
+    const mainContent = document.querySelector('.row');
+    if (mainContent) {
+        mainContent.insertAdjacentElement('afterend', alertDiv);
+    }
 }
 </script>
 {% endblock %}

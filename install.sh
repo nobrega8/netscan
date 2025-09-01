@@ -54,6 +54,7 @@ Group=$RUN_GROUP
 WorkingDirectory=$APP_DIR
 Environment="PYTHONUNBUFFERED=1"
 Environment="SECRET_KEY=$SECRET_KEY"
+Environment="NETSCAN_PORT=2530"
 Environment="PATH=$APP_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
 ExecStart=$APP_DIR/venv/bin/python $APP_DIR/service.py
 Restart=on-failure

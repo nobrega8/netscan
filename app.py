@@ -55,10 +55,10 @@ csrf = CSRFProtect(app)
 
 # Setup rate limiting
 limiter = Limiter(
-    app,
     key_func=get_remote_address,
     default_limits=["1000 per day", "100 per hour"]
 )
+limiter.init_app(app)
 
 # User loader for Flask-Login
 @login_manager.user_loader
@@ -530,6 +530,8 @@ def stats():
 @login_required
 def settings():
     from models import Device, Person, Scan
+    import os
+    import json
     
     stats = {
         'total_devices': Device.query.count(),
@@ -545,13 +547,30 @@ def settings():
         'dark_mode': get_setting('dark_mode', 'False') == 'True'
     }
     
-    # Get last updated time (you can implement this based on your needs)
-    last_updated = None
+    # Get update status
+    update_status = None
+    try:
+        status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
+        if os.path.exists(status_file):
+            with open(status_file, 'r') as f:
+                update_status = json.load(f)
+        
+        # Add current commit info
+        try:
+            current_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], 
+                                          capture_output=True, text=True, timeout=5).stdout.strip()[:8]
+            if update_status:
+                update_status['current_commit'] = current_commit
+        except:
+            if update_status:
+                update_status['current_commit'] = 'unknown'
+    except:
+        pass
     
     return render_template('settings.html', 
                          config=app.config, 
                          stats=stats, 
-                         last_updated=last_updated,
+                         update_status=update_status,
                          current_settings=current_settings)
 
 @app.route('/update_settings', methods=['POST'])
@@ -595,40 +614,104 @@ def get_setting(key, default=None):
 @app.route('/update_system', methods=['POST'])
 @admin_required_local
 def update_system():
+    """Enhanced system update using the comprehensive update script"""
+    import os
+    import subprocess
+    import json
+    
     try:
-        # Perform git pull
-        result = subprocess.run(['git', 'pull', 'origin', 'main'], 
-                              capture_output=True, text=True, timeout=30)
+        # Path to the update script
+        script_path = os.path.join(os.path.dirname(__file__), 'scripts', 'update.sh')
+        
+        # Check if script exists
+        if not os.path.exists(script_path):
+            return jsonify({'success': False, 'error': 'Update script not found'})
+        
+        # Write update status as "running"
+        status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
+        with open(status_file, 'w') as f:
+            json.dump({
+                "last_update": datetime.utcnow().isoformat(),
+                "status": "running",
+                "message": "Update process started"
+            }, f)
+        
+        # Run the update script
+        result = subprocess.run(['bash', script_path], 
+                              capture_output=True, text=True, timeout=300)
         
         if result.returncode == 0:
-            # Try to restart the service using systemctl
-            try:
-                # First try with sudo
-                restart_result = subprocess.run(['sudo', 'systemctl', 'restart', 'netscan'], 
-                                             capture_output=True, text=True, timeout=10)
-                if restart_result.returncode == 0:
-                    return jsonify({'success': True, 'message': 'Update completed successfully. Service restarted.'})
-                else:
-                    # If sudo systemctl fails, try without sudo (in case service is running as current user)
-                    restart_result = subprocess.run(['systemctl', '--user', 'restart', 'netscan'], 
-                                                 capture_output=True, text=True, timeout=10)
-                    if restart_result.returncode == 0:
-                        return jsonify({'success': True, 'message': 'Update completed successfully. Service restarted.'})
-                    else:
-                        # If systemctl restart fails, just report success for the update but mention restart issue
-                        return jsonify({'success': True, 'message': 'Update completed successfully. Please manually restart the service.'})
-            except subprocess.TimeoutExpired:
-                return jsonify({'success': True, 'message': 'Update completed successfully. Service restart timed out - please restart manually.'})
-            except Exception as restart_error:
-                # Update was successful but restart failed
-                return jsonify({'success': True, 'message': f'Update completed successfully. Could not restart service: {str(restart_error)}'})
+            return jsonify({
+                'success': True, 
+                'message': 'Update completed successfully. Service will restart shortly.',
+                'log': result.stdout
+            })
         else:
-            return jsonify({'success': False, 'error': result.stderr})
+            # Write error status
+            with open(status_file, 'w') as f:
+                json.dump({
+                    "last_update": datetime.utcnow().isoformat(),
+                    "status": "error",
+                    "message": f"Update failed: {result.stderr}",
+                    "log": result.stdout + result.stderr
+                }, f)
+            
+            return jsonify({
+                'success': False, 
+                'error': result.stderr,
+                'log': result.stdout
+            })
             
     except subprocess.TimeoutExpired:
-        return jsonify({'success': False, 'error': 'Update timeout'})
+        return jsonify({'success': False, 'error': 'Update timeout (exceeded 5 minutes)'})
     except Exception as e:
+        # Write error status
+        try:
+            status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
+            with open(status_file, 'w') as f:
+                json.dump({
+                    "last_update": datetime.utcnow().isoformat(),
+                    "status": "error",
+                    "message": f"Update failed: {str(e)}"
+                }, f)
+        except:
+            pass
+        
         return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/update_status', methods=['GET'])
+@admin_required_local
+def get_update_status():
+    """Get the current update status"""
+    import os
+    import json
+    from datetime import datetime
+    
+    try:
+        status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
+        
+        if os.path.exists(status_file):
+            with open(status_file, 'r') as f:
+                status = json.load(f)
+        else:
+            status = {
+                "last_update": None,
+                "status": "never",
+                "message": "No updates performed yet"
+            }
+        
+        # Add current commit info
+        try:
+            current_commit = subprocess.run(['git', 'rev-parse', 'HEAD'], 
+                                          capture_output=True, text=True, timeout=5).stdout.strip()[:8]
+            status['current_commit'] = current_commit
+        except:
+            status['current_commit'] = 'unknown'
+        
+        return jsonify(status)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 @app.route('/update_oui', methods=['POST'])
 @admin_required_local
@@ -1102,9 +1185,6 @@ def speed_test_full():
             'error': f'Full speed test failed: {str(e)}'
         })
 
-# Add rate limiting to login route
-limiter.limit("5 per minute")(auth_bp.view_functions['login'])
-
 # Enhanced API endpoints for improved UI/UX
 @app.route('/api/scan/start', methods=['POST'])
 @login_required
@@ -1204,7 +1284,7 @@ def api_devices_table():
 
 @app.route('/api/devices/merge', methods=['POST'])
 @login_required
-@requires_permission('editor')
+@editor_required
 def api_devices_merge():
     """Merge multiple devices"""
     try:
@@ -1461,7 +1541,7 @@ def api_sse_dashboard():
 
 @app.route('/api/oui/update', methods=['POST'])
 @login_required
-@requires_permission('admin')
+@admin_required_local
 def api_oui_update():
     """Update OUI database"""
     try:
@@ -1536,9 +1616,18 @@ def initialize_app():
             db.create_all()
             # Create default admin user
             create_default_admin()
+            
+            # Add rate limiting to login route after blueprints are registered
+            try:
+                if 'login' in auth_bp.view_functions:
+                    limiter.limit("5 per minute")(auth_bp.view_functions['login'])
+            except Exception as e:
+                print(f"Warning: Could not apply rate limiting to login: {e}")
+                
         except Exception as e:
             print(f"Error during app initialization: {e}")
 
 if __name__ == '__main__':
     initialize_app()
-    app.run(debug=True, host='0.0.0.0', port=2530)
+    from config import Config
+    app.run(debug=True, host='0.0.0.0', port=Config.NETSCAN_PORT)
