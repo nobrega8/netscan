@@ -7,9 +7,9 @@ import enum
 db = SQLAlchemy()
 
 class UserRole(enum.Enum):
-    ADMIN = "admin"
-    EDITOR = "editor"
-    VIEWER = "viewer"
+    ADMIN = "ADMIN"
+    EDITOR = "EDITOR"
+    VIEWER = "VIEWER"
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)

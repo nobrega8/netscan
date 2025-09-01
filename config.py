@@ -14,3 +14,6 @@ class Config:
     
     # OUI database
     OUI_UPDATE_URL = 'http://standards-oui.ieee.org/oui/oui.txt'
+    
+    # Scanning configuration
+    ENABLE_OS_DETECTION = os.environ.get('ENABLE_OS_DETECTION', 'false').lower() == 'true'

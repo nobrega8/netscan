@@ -38,11 +38,35 @@ echo "Installing dependencies..."
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
 
-# 5) Run database migrations
+# 5) Run database migrations and initialize admin user
 echo "Setting up database..."
 export FLASK_APP=app.py
 export SECRET_KEY="$SECRET_KEY"
 ./venv/bin/flask db upgrade 2>/dev/null || echo "Database migration not needed or failed"
+
+# Initialize database and create admin user
+echo "Initializing database and creating admin user..."
+./venv/bin/python -c "
+import sys
+sys.path.insert(0, '.')
+from app import app
+with app.app_context():
+    from models import db
+    from app import create_default_admin
+    db.create_all()
+    create_default_admin()
+    print('Database initialized successfully')
+" || echo "Database initialization failed or already complete"
+
+# Ensure proper permissions on database files
+sudo chown -R "$RUN_USER:$RUN_GROUP" "$APP_DIR"
+if [ -f "instance/netscan.db" ]; then
+    sudo chown "$RUN_USER:$RUN_GROUP" instance/netscan.db
+    sudo chmod 664 instance/netscan.db
+fi
+if [ -d "instance" ]; then
+    sudo chown -R "$RUN_USER:$RUN_GROUP" instance/
+fi
 
 # 6) Create/update systemd service
 echo "Creating systemd service..."
