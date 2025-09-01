@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     locales \
     git \
     curl \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure locales
