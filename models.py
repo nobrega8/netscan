@@ -116,7 +116,6 @@ class Device(db.Model):
             if self.person_id:
                 try:
                     # Get person by ID to avoid SQLAlchemy relationship loading issues
-                    from models import Person  # Import here to avoid circular imports
                     person = db.session.get(Person, self.person_id)
                     if person:
                         owner = {

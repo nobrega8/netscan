@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, Response, flash
 from flask_migrate import Migrate
 from flask_login import LoginManager, login_required, current_user
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
@@ -80,6 +80,11 @@ login_manager.login_message_category = 'info'
 
 # Setup CSRF protection
 csrf = CSRFProtect(app)
+
+# Template context processor for CSRF token
+@app.context_processor
+def inject_csrf_token():
+    return dict(csrf_token=generate_csrf)
 
 # Setup rate limiting
 storage_uri = os.environ.get("REDIS_URL", "memory://")
