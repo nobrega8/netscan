@@ -58,41 +58,44 @@ function updateDeviceRow(device) {
     });
 }
 
-// Enhanced scan functionality with better error handling
-function startScan() {
+// Enhanced scan functionality with progress tracking
+function startEnhancedScan() {
     const button = event.target;
     const originalContent = button.innerHTML;
     
     button.disabled = true;
-    button.innerHTML = '<span class="loading loading-spinner loading-sm"></span> Scanning...';
+    button.innerHTML = '<span class="loading loading-spinner loading-sm"></span> Starting scan...';
     
-    fetch('/scan', { 
+    if (window.showToast) {
+        showToast('Starting network scan...', 'info');
+    }
+    
+    // Start async scan
+    fetch('/api/scan/start', { 
         method: 'POST',
         headers: {
+            'Content-Type': 'application/json',
             'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
-        }
+        },
+        body: JSON.stringify({})
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
             if (window.showToast) {
-                showToast(`Scan completed! Found ${data.devices_found} devices.`, 'success');
-            } else {
-                alert(`Scan completed! Found ${data.devices_found} devices.`);
+                showToast('Network scan started successfully', 'info');
             }
             
-            // Trigger HTMX refresh if available
-            if (typeof htmx !== 'undefined') {
-                htmx.trigger(document.body, 'scan-completed');
-            } else {
-                location.reload();
-            }
+            // Start progress monitoring
+            monitorScanProgress(data.task_id, button, originalContent);
         } else {
             if (window.showToast) {
-                showToast(`Scan failed: ${data.error}`, 'error');
+                showToast(`Failed to start scan: ${data.error}`, 'error');
             } else {
-                alert(`Scan failed: ${data.error}`);
+                alert(`Failed to start scan: ${data.error}`);
             }
+            button.disabled = false;
+            button.innerHTML = originalContent;
         }
     })
     .catch(error => {
@@ -101,11 +104,85 @@ function startScan() {
         } else {
             alert(`Error: ${error}`);
         }
-    })
-    .finally(() => {
         button.disabled = false;
         button.innerHTML = originalContent;
     });
+}
+
+function monitorScanProgress(taskId, button, originalContent) {
+    const progressInterval = setInterval(() => {
+        fetch(`/api/scan/progress/${taskId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    clearInterval(progressInterval);
+                    if (window.showToast) {
+                        showToast('Error monitoring scan progress', 'error');
+                    }
+                    button.disabled = false;
+                    button.innerHTML = originalContent;
+                    return;
+                }
+                
+                // Update button with progress
+                button.innerHTML = `<span class="loading loading-spinner loading-sm"></span> ${data.message} (${data.progress}%)`;
+                
+                // Update Alpine.js data if available
+                if (window.Alpine && window.Alpine.store) {
+                    window.Alpine.store('scanProgress', {
+                        active: true,
+                        progress: data.progress,
+                        message: data.message,
+                        taskId: taskId
+                    });
+                }
+                
+                if (data.status === 'completed') {
+                    clearInterval(progressInterval);
+                    if (window.showToast) {
+                        showToast(`Scan completed successfully!`, 'success');
+                    } else {
+                        alert('Scan completed successfully!');
+                    }
+                    
+                    button.disabled = false;
+                    button.innerHTML = originalContent;
+                    
+                    // Trigger HTMX refresh
+                    if (typeof htmx !== 'undefined') {
+                        htmx.trigger(document.body, 'scan-completed');
+                    } else {
+                        location.reload();
+                    }
+                } else if (data.status === 'failed') {
+                    clearInterval(progressInterval);
+                    if (window.showToast) {
+                        showToast(`Scan failed: ${data.error}`, 'error');
+                    } else {
+                        alert(`Scan failed: ${data.error}`);
+                    }
+                    
+                    button.disabled = false;
+                    button.innerHTML = originalContent;
+                }
+            })
+            .catch(error => {
+                clearInterval(progressInterval);
+                if (window.showToast) {
+                    showToast(`Error monitoring scan: ${error}`, 'error');
+                } else {
+                    alert(`Error monitoring scan: ${error}`);
+                }
+                button.disabled = false;
+                button.innerHTML = originalContent;
+            });
+    }, 2000); // Check every 2 seconds
+}
+
+// Enhanced scan functionality with better error handling (backwards compatibility)
+function startScan() {
+    // Use the new enhanced scan by default
+    return startEnhancedScan();
 }
 
 // Device merging functionality

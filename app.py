@@ -1111,21 +1111,69 @@ limiter.limit("5 per minute")(auth_bp.view_functions['login'])
 def api_scan_start():
     """Start network scan with progress tracking"""
     try:
-        # Start scan in background
-        scanner = NetworkScanner()
-        devices = scanner.scan_network()
-        scanner.mark_offline_devices()
+        from tasks import start_network_scan
+        
+        # Get network range from request if provided
+        data = request.get_json() or {}
+        network_range = data.get('network_range')
+        
+        # Start async scan
+        task_id = start_network_scan(network_range)
         
         return jsonify({
             'success': True,
-            'devices_found': len(devices),
-            'message': 'Scan completed successfully'
+            'task_id': task_id,
+            'message': 'Network scan started'
         })
     except Exception as e:
         return jsonify({
             'success': False,
             'error': str(e)
         })
+
+@app.route('/api/scan/progress/<task_id>')
+@login_required 
+def api_scan_progress(task_id):
+    """Get scan progress"""
+    try:
+        from tasks import get_scan_progress
+        
+        progress = get_scan_progress(task_id)
+        if progress:
+            return jsonify(progress)
+        else:
+            return jsonify({'error': 'Task not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/tasks')
+@login_required
+def api_tasks():
+    """Get all tasks summary"""
+    try:
+        from tasks import task_manager
+        
+        summary = task_manager.get_task_summary()
+        tasks = []
+        
+        for task_id, task in task_manager.get_all_tasks().items():
+            tasks.append({
+                'id': task.id,
+                'name': task.name,
+                'status': task.status.value,
+                'progress': task.progress,
+                'message': task.message,
+                'created_at': task.created_at.isoformat() if task.created_at else None,
+                'started_at': task.started_at.isoformat() if task.started_at else None,
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None
+            })
+        
+        return jsonify({
+            'summary': summary,
+            'tasks': tasks[-10:]  # Last 10 tasks
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/devices/table')
 @login_required
@@ -1205,26 +1253,17 @@ def api_devices_merge():
 def api_device_scan(device_id):
     """Scan specific device for open ports"""
     try:
-        device = Device.query.get_or_404(device_id)
-        scanner = NetworkScanner()
+        from tasks import start_device_port_scan
         
-        if device.ip_address:
-            open_ports = scanner.scan_ports(device.ip_address)
-            device.open_ports = json.dumps(open_ports)
-            device.last_seen = datetime.utcnow()
-            db.session.commit()
-            
-            return jsonify({
-                'success': True,
-                'open_ports': open_ports,
-                'message': f'Found {len(open_ports)} open ports'
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'error': 'Device has no IP address'
-            })
-            
+        # Start async port scan
+        task_id = start_device_port_scan(device_id)
+        
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'Device port scan started'
+        })
+        
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
 
@@ -1367,17 +1406,126 @@ def api_recent_changes():
 def api_sse_dashboard():
     """Server-Sent Events for dashboard updates"""
     def event_stream():
-        # This is a basic implementation - in production you'd want proper SSE handling
+        from tasks import task_manager
+        
+        # Send initial connection message
         yield f"data: {json.dumps({'type': 'connected', 'message': 'Connected to dashboard updates'})}\n\n"
         
-        # For now, just send a heartbeat every 30 seconds
-        import time
+        # Monitor for scan tasks and send updates
+        last_update = time.time()
+        
         while True:
-            time.sleep(30)
-            yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            try:
+                current_time = time.time()
+                
+                # Check for active scan tasks
+                active_scans = []
+                for task_id, task in task_manager.get_all_tasks().items():
+                    if task.status.value == 'running' and 'scan' in task.name.lower():
+                        active_scans.append({
+                            'task_id': task_id,
+                            'name': task.name,
+                            'progress': task.progress,
+                            'message': task.message
+                        })
+                
+                # Send scan progress updates
+                if active_scans:
+                    for scan in active_scans:
+                        data = {
+                            'type': 'scan_progress',
+                            'progress': scan['progress'],
+                            'status': scan['message'],
+                            'task_id': scan['task_id']
+                        }
+                        yield f"data: {json.dumps(data)}\n\n"
+                
+                # Send heartbeat every 30 seconds
+                if current_time - last_update > 30:
+                    data = {
+                        'type': 'heartbeat', 
+                        'timestamp': datetime.utcnow().isoformat(),
+                        'active_scans': len(active_scans)
+                    }
+                    yield f"data: {json.dumps(data)}\n\n"
+                    last_update = current_time
+                
+                time.sleep(2)  # Check every 2 seconds
+                
+            except Exception as e:
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+                break
     
     return Response(event_stream(), mimetype='text/event-stream',
                    headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'})
+
+@app.route('/api/oui/update', methods=['POST'])
+@login_required
+@requires_permission('admin')
+def api_oui_update():
+    """Update OUI database"""
+    try:
+        from tasks import start_oui_update
+        
+        task_id = start_oui_update()
+        
+        return jsonify({
+            'success': True,
+            'task_id': task_id,
+            'message': 'OUI database update started'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/metrics')
+@login_required
+def api_metrics():
+    """Prometheus-style metrics endpoint"""
+    try:
+        # Device metrics
+        total_devices = Device.query.count()
+        online_devices = Device.query.filter_by(is_online=True).count()
+        offline_devices = total_devices - online_devices
+        
+        # Recent scan metrics
+        recent_scans = Scan.query.filter(
+            Scan.timestamp >= datetime.utcnow() - timedelta(hours=24)
+        ).count()
+        
+        # Task metrics
+        from tasks import task_manager
+        task_summary = task_manager.get_task_summary()
+        
+        # Generate Prometheus format
+        metrics = []
+        metrics.append('# HELP netscan_devices_total Total number of discovered devices')
+        metrics.append('# TYPE netscan_devices_total gauge')
+        metrics.append(f'netscan_devices_total {total_devices}')
+        
+        metrics.append('# HELP netscan_devices_online Number of online devices')
+        metrics.append('# TYPE netscan_devices_online gauge')
+        metrics.append(f'netscan_devices_online {online_devices}')
+        
+        metrics.append('# HELP netscan_devices_offline Number of offline devices')
+        metrics.append('# TYPE netscan_devices_offline gauge')
+        metrics.append(f'netscan_devices_offline {offline_devices}')
+        
+        metrics.append('# HELP netscan_scans_24h Number of scans in last 24 hours')
+        metrics.append('# TYPE netscan_scans_24h counter')
+        metrics.append(f'netscan_scans_24h {recent_scans}')
+        
+        for status, count in task_summary.items():
+            metrics.append(f'# HELP netscan_tasks_{status} Number of {status} tasks')
+            metrics.append(f'# TYPE netscan_tasks_{status} gauge')
+            metrics.append(f'netscan_tasks_{status} {count}')
+        
+        return Response('\n'.join(metrics), mimetype='text/plain')
+        
+    except Exception as e:
+        return Response(f'# Error generating metrics: {str(e)}', mimetype='text/plain'), 500
 
 # Initialize database and create admin user
 def initialize_app():
