@@ -271,7 +271,9 @@ def dashboard():
 @login_required
 def devices():
     devices = Device.query.order_by(Device.last_seen.desc()).all()
-    return render_template('devices.html', devices=devices)
+    # Convert devices to dict for JSON serialization in template
+    devices_dict = [device.to_dict() for device in devices]
+    return render_template('devices.html', devices=devices_dict)
 
 @app.route('/device/<int:device_id>')
 @login_required

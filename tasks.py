@@ -233,8 +233,13 @@ class ScanTasks:
         """Enhanced network scan task"""
         from scanner import EnhancedNetworkScanner
         
-        scanner = EnhancedNetworkScanner()
-        return scanner.enhanced_scan_network(network_range, progress_callback)
+        # Get app instance from the module where it's defined
+        import app as app_module
+        
+        # Run within Flask application context
+        with app_module.app.app_context():
+            scanner = EnhancedNetworkScanner()
+            return scanner.enhanced_scan_network(network_range, progress_callback)
     
     @staticmethod
     def device_port_scan(device_id, progress_callback=None):
@@ -242,39 +247,44 @@ class ScanTasks:
         from models import Device
         from scanner import EnhancedNetworkScanner
         
-        device = Device.query.get(device_id)
-        if not device or not device.ip_address:
-            raise ValueError("Device not found or has no IP address")
+        # Get app instance from the module where it's defined
+        import app as app_module
         
-        scanner = EnhancedNetworkScanner()
-        
-        if progress_callback:
-            progress_callback(25, f"Scanning ports for {device.hostname or device.ip_address}")
-        
-        # Enhanced port scan
-        enhanced_info = scanner._detect_services_and_os(device.ip_address)
-        
-        if progress_callback:
-            progress_callback(75, "Updating device information...")
-        
-        # Update device
-        device.open_ports = json.dumps(enhanced_info.get('open_ports', []))
-        device.services = json.dumps(enhanced_info.get('services', []))
-        device.os_info = enhanced_info.get('os_info') or device.os_info
-        device.device_type = enhanced_info.get('device_type') or device.device_type
-        device.last_seen = datetime.utcnow()
-        
-        from models import db
-        db.session.commit()
-        
-        if progress_callback:
-            progress_callback(100, "Port scan completed")
-        
-        return {
-            'device_id': device_id,
-            'open_ports': enhanced_info.get('open_ports', []),
-            'services': enhanced_info.get('services', [])
-        }
+        # Run within Flask application context
+        with app_module.app.app_context():
+            device = Device.query.get(device_id)
+            if not device or not device.ip_address:
+                raise ValueError("Device not found or has no IP address")
+            
+            scanner = EnhancedNetworkScanner()
+            
+            if progress_callback:
+                progress_callback(25, f"Scanning ports for {device.hostname or device.ip_address}")
+            
+            # Enhanced port scan
+            enhanced_info = scanner._detect_services_and_os(device.ip_address)
+            
+            if progress_callback:
+                progress_callback(75, "Updating device information...")
+            
+            # Update device
+            device.open_ports = json.dumps(enhanced_info.get('open_ports', []))
+            device.services = json.dumps(enhanced_info.get('services', []))
+            device.os_info = enhanced_info.get('os_info') or device.os_info
+            device.device_type = enhanced_info.get('device_type') or device.device_type
+            device.last_seen = datetime.utcnow()
+            
+            from models import db
+            db.session.commit()
+            
+            if progress_callback:
+                progress_callback(100, "Port scan completed")
+            
+            return {
+                'device_id': device_id,
+                'open_ports': enhanced_info.get('open_ports', []),
+                'services': enhanced_info.get('services', [])
+            }
     
     @staticmethod
     def oui_database_update(progress_callback=None):

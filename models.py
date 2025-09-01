@@ -83,6 +83,71 @@ class Device(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    def to_dict(self):
+        """Convert Device object to dictionary for JSON serialization"""
+        # Parse JSON strings safely
+        open_ports = []
+        services = []
+        merged_devices = []
+        
+        try:
+            if self.open_ports:
+                import json
+                open_ports = json.loads(self.open_ports)
+        except:
+            pass
+            
+        try:
+            if self.services:
+                import json
+                services = json.loads(self.services)
+        except:
+            pass
+            
+        try:
+            if self.merged_devices:
+                import json
+                merged_devices = json.loads(self.merged_devices)
+        except:
+            pass
+        
+        # Handle owner relationship
+        owner = None
+        if self.owner:
+            owner = {
+                'name': self.owner.name,
+                'email': self.owner.email,
+                'id': self.owner.id
+            }
+        
+        return {
+            'id': self.id,
+            'hostname': self.hostname,
+            'ip_address': self.ip_address,
+            'mac_address': self.mac_address,
+            'brand': self.brand,
+            'model': self.model,
+            'icon': self.icon,
+            'image_path': self.image_path,
+            'is_online': self.is_online,
+            'last_seen': self.last_seen.isoformat() if self.last_seen else None,
+            'first_seen': self.first_seen.isoformat() if self.first_seen else None,
+            'open_ports': open_ports,
+            'person_id': self.person_id,
+            'merged_devices': merged_devices,
+            'os_info': self.os_info,
+            'vendor': self.vendor,
+            'device_type': self.device_type,
+            'os_family': self.os_family,
+            'netbios_name': self.netbios_name,
+            'workgroup': self.workgroup,
+            'services': services,
+            'category': self.category,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'owner': owner
+        }
+
 class Person(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
