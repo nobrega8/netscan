@@ -625,9 +625,29 @@ def settings():
 @editor_required
 def update_settings():
     try:
-        scan_interval = request.form.get('scan_interval')
-        network_range = request.form.get('network_range')
+        # Validate and sanitize form inputs
+        scan_interval = request.form.get('scan_interval', '').strip()
+        network_range = request.form.get('network_range', '').strip()
         dark_mode = request.form.get('dark_mode') == 'on'
+        
+        # Validate scan_interval
+        if not scan_interval:
+            flash('Scan interval is required.', 'error')
+            return redirect(url_for('settings'))
+        
+        try:
+            scan_interval_val = int(scan_interval)
+            if scan_interval_val < 1 or scan_interval_val > 1440:
+                flash('Scan interval must be between 1 and 1440 minutes.', 'error')
+                return redirect(url_for('settings'))
+        except ValueError:
+            flash('Scan interval must be a valid number.', 'error')
+            return redirect(url_for('settings'))
+        
+        # Validate network_range
+        if not network_range:
+            flash('Network range is required.', 'error')
+            return redirect(url_for('settings'))
         
         # Update settings in database
         settings_to_update = [
@@ -646,13 +666,13 @@ def update_settings():
                 db.session.add(setting)
         
         db.session.commit()
-        
+        flash('Settings updated successfully.', 'success')
         return redirect(url_for('settings'))
         
     except Exception as e:
-        return render_template('settings.html', 
-                             config=app.config, 
-                             error=f"Failed to update settings: {str(e)}")
+        db.session.rollback()
+        flash(f"Failed to update settings: {str(e)}", 'error')
+        return redirect(url_for('settings'))
 
 def get_setting(key, default=None):
     """Get a setting value from database"""
