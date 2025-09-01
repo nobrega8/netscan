@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Devices - NetScan{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Network Devices</h2>
+    <div>
+        <button class="btn btn-warning" id="merge-button" onclick="mergeSelectedDevices()" disabled>
+            <i class="fas fa-compress-arrows-alt me-2"></i>Merge Devices
+        </button>
+        <button class="btn btn-primary" onclick="startScan()">
+            <i class="fas fa-search me-2"></i>Scan Network
+        </button>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    <i class="fas fa-info-circle me-2"></i>
+    <strong>Device Merging:</strong> Select multiple devices with the same owner to merge their MAC addresses. 
+    Check the boxes next to devices, then click "Merge Devices".
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Select</th>
+                        <th>Status</th>
+                        <th>Device</th>
+                        <th>IP Address</th>
+                        <th>MAC Address</th>
+                        <th>Brand/Model</th>
+                        <th>Owner</th>
+                        <th>Ports</th>
+                        <th>Last Seen</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for device in devices %}
+                    <tr data-device-id="{{ device.id }}">
+                        <td>
+                            <input type="checkbox" class="form-check-input" 
+                                   data-device-id="{{ device.id }}" 
+                                   onchange="toggleDeviceSelection({{ device.id }})">
+                        </td>
+                        <td>
+                            {% if device.is_online %}
+                                <span class="badge bg-success">
+                                    <i class="fas fa-circle me-1"></i>Online
+                                </span>
+                            {% else %}
+                                <span class="badge bg-secondary">
+                                    <i class="fas fa-circle me-1"></i>Offline
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                {% if device.image_path %}
+                                    <img src="{{ url_for('uploaded_file', filename=device.image_path) }}" 
+                                         alt="Device" class="me-2" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover;">
+                                {% else %}
+                                    <i class="fas fa-{{ device.icon or 'device' }} me-2 text-primary" style="font-size: 1.5em;"></i>
+                                {% endif %}
+                                <div>
+                                    <a href="{{ url_for('device_detail', device_id=device.id) }}" class="text-decoration-none">
+                                        <strong>{{ device.hostname or 'Unknown' }}</strong>
+                                    </a>
+                                    {% if device.merged_devices %}
+                                        <br><small class="text-muted">
+                                            <i class="fas fa-compress-arrows-alt"></i> Merged device
+                                        </small>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>{{ device.ip_address }}</td>
+                        <td><code>{{ device.mac_address }}</code></td>
+                        <td>
+                            {% if device.brand %}
+                                {{ device.brand }}
+                                {% if device.model %}/ {{ device.model }}{% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.owner %}
+                                <a href="{{ url_for('person_detail', person_id=device.owner.id) }}">
+                                    {{ device.owner.name }}
+                                </a>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if device.open_ports %}
+                                {% set ports = device.open_ports | from_json %}
+                                {% for port in ports[:3] %}
+                                    <span class="badge bg-secondary me-1">{{ port }}</span>
+                                {% endfor %}
+                                {% if ports | length > 3 %}
+                                    <span class="badge bg-info">+{{ ports | length - 3 }}</span>
+                                {% endif %}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="{{ url_for('device_detail', device_id=device.id) }}" 
+                                   class="btn btn-outline-primary">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                <a href="{{ url_for('edit_device', device_id=device.id) }}" 
+                                   class="btn btn-outline-secondary">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startScan() {
+    const button = event.target;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Scanning...';
+    
+    fetch('/scan', { method: 'POST' })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`Scan completed! Found ${data.devices_found} devices.`);
+                location.reload();
+            } else {
+                alert(`Scan failed: ${data.error}`);
+            }
+        })
+        .catch(error => {
+            alert(`Error: ${error}`);
+        })
+        .finally(() => {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-search me-2"></i>Scan Network';
+        });
+}
+</script>
+{% endblock %}

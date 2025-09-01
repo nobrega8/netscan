@@ -1,118 +1,285 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="row mb-4">
-    <div class="col-md-3 mb-3">
-        <div class="card">
-            <div class="card-body text-center">
-                <h3 class="text-success">{{ online_devices }}</h3>
-                <p class="text-muted mb-0">Online Devices</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card">
-            <div class="card-body text-center">
-                <h3 class="text-primary">{{ total_devices }}</h3>
-                <p class="text-muted mb-0">Total Devices</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card">
-            <div class="card-body text-center">
-                <h3 class="text-warning">{{ people }}</h3>
-                <p class="text-muted mb-0">People</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3 mb-3">
-        <div class="card">
-            <div class="card-body text-center">
-                <button class="btn btn-primary" onclick="startScan()">
-                    <i class="fas fa-search me-2"></i>Scan Now
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+{% block title %}Dashboard - NetScan{% endblock %}
 
-<div class="row">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5>Recent Devices</h5>
+{% block content %}
+<div class="space-y-6" x-data="dashboardData()">
+    <!-- Header -->
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Network Dashboard</h1>
+            <p class="text-base-content/70 mt-1">Monitor your network devices and activity</p>
+        </div>
+        <div class="mt-4 lg:mt-0 flex gap-2">
+            <button 
+                class="btn btn-primary"
+                onclick="startEnhancedScan()"
+                :disabled="isScanning"
+            >
+                <span x-show="!isScanning">
+                    <i class="fas fa-search mr-2"></i>Scan Network
+                </span>
+                <span x-show="isScanning" class="flex items-center">
+                    <span class="loading loading-spinner loading-sm mr-2"></span>Scanning...
+                </span>
+            </button>
+            <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-outline">
+                    <i class="fas fa-cog mr-2"></i>Options
+                </label>
+                <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
+                    <li><a onclick="exportDevices('csv')"><i class="fas fa-file-csv mr-2"></i>Export CSV</a></li>
+                    <li><a onclick="exportDevices('excel')"><i class="fas fa-file-excel mr-2"></i>Export Excel</a></li>
+                    <li><a href="{{ url_for('settings') }}"><i class="fas fa-cog mr-2"></i>Settings</a></li>
+                </ul>
             </div>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="stat bg-base-200 rounded-box">
+            <div class="stat-figure text-success">
+                <i class="fas fa-circle text-2xl"></i>
+            </div>
+            <div class="stat-title">Online Devices</div>
+            <div class="stat-value text-success">{{ online_devices }}</div>
+            <div class="stat-desc">Currently active</div>
+        </div>
+        
+        <div class="stat bg-base-200 rounded-box">
+            <div class="stat-figure text-primary">
+                <i class="fas fa-desktop text-2xl"></i>
+            </div>
+            <div class="stat-title">Total Devices</div>
+            <div class="stat-value text-primary">{{ total_devices }}</div>
+            <div class="stat-desc">Ever discovered</div>
+        </div>
+        
+        <div class="stat bg-base-200 rounded-box">
+            <div class="stat-figure text-warning">
+                <i class="fas fa-users text-2xl"></i>
+            </div>
+            <div class="stat-title">People</div>
+            <div class="stat-value text-warning">{{ people }}</div>
+            <div class="stat-desc">Registered users</div>
+        </div>
+        
+        <div class="stat bg-base-200 rounded-box">
+            <div class="stat-figure text-info">
+                <i class="fas fa-clock text-2xl"></i>
+            </div>
+            <div class="stat-title">Last Scan</div>
+            <div class="stat-value text-info text-sm" x-text="lastScanFormatted">
+                {{ last_scan.strftime('%H:%M') if last_scan else 'Never' }}
+            </div>
+            <div class="stat-desc">{{ last_scan.strftime('%Y-%m-%d') if last_scan else 'No scans yet' }}</div>
+        </div>
+    </div>
+
+    <!-- Recent Activity & Quick Scan Progress -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Scan Progress (shown during scanning) -->
+        <div x-show="isScanning" class="card bg-base-200 shadow-sm lg:col-span-1">
             <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-striped">
+                <h2 class="card-title">
+                    <i class="fas fa-sync fa-spin mr-2"></i>Scan Progress
+                </h2>
+                <div class="space-y-4">
+                    <div class="w-full bg-base-300 rounded-full h-2">
+                        <div class="bg-primary h-2 rounded-full transition-all duration-300" 
+                             :style="`width: ${scanProgress}%`"></div>
+                    </div>
+                    <div class="text-sm text-base-content/70" x-text="scanStatus">
+                        Initializing scan...
+                    </div>
+                    <div class="stats stats-vertical bg-base-100 shadow">
+                        <div class="stat">
+                            <div class="stat-title">Devices Found</div>
+                            <div class="stat-value text-sm" x-text="devicesFound">0</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-title">New Devices</div>
+                            <div class="stat-value text-sm" x-text="newDevices">0</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Network Overview -->
+        <div class="card bg-base-200 shadow-sm" :class="isScanning ? 'lg:col-span-2' : 'lg:col-span-3'">
+            <div class="card-body">
+                <h2 class="card-title">
+                    <i class="fas fa-network-wired mr-2"></i>Network Overview
+                </h2>
+                <div class="overflow-x-auto">
+                    <table class="table table-compact w-full">
                         <thead>
                             <tr>
                                 <th>Status</th>
-                                <th>Hostname</th>
+                                <th>Device</th>
                                 <th>IP Address</th>
                                 <th>MAC Address</th>
                                 <th>Brand</th>
                                 <th>Owner</th>
                                 <th>Last Seen</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="devices-table-body" hx-get="/api/devices/table" hx-trigger="load, scan-completed from:body, every 30s">
                             {% for device in devices[:10] %}
-                            <tr>
+                            <tr data-device-id="{{ device.id }}">
                                 <td>
                                     {% if device.is_online %}
-                                        <span class="badge bg-success">Online</span>
+                                        <div class="badge badge-success gap-2">
+                                            <i class="fas fa-circle text-xs"></i>
+                                            Online
+                                        </div>
                                     {% else %}
-                                        <span class="badge bg-secondary">Offline</span>
+                                        <div class="badge badge-ghost gap-2">
+                                            <i class="fas fa-circle text-xs"></i>
+                                            Offline
+                                        </div>
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <a href="{{ url_for('device_detail', device_id=device.id) }}">
-                                        {{ device.hostname or 'Unknown' }}
-                                    </a>
+                                    <div class="flex items-center space-x-3">
+                                        <div class="avatar">
+                                            <div class="mask mask-circle w-8 h-8 bg-primary text-primary-content flex items-center justify-center">
+                                                <i class="fas fa-{{ device.icon or 'desktop' }} text-xs"></i>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="font-bold">{{ device.hostname or 'Unknown' }}</div>
+                                            {% if device.device_type %}
+                                            <div class="text-sm opacity-50">{{ device.device_type }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
                                 </td>
-                                <td>{{ device.ip_address }}</td>
-                                <td><code>{{ device.mac_address }}</code></td>
-                                <td>{{ device.brand or '-' }}</td>
-                                <td>{{ device.owner.name if device.owner else '-' }}</td>
-                                <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
+                                <td>
+                                    <span class="font-mono text-sm">{{ device.ip_address }}</span>
+                                </td>
+                                <td>
+                                    <span class="font-mono text-sm">{{ device.mac_address }}</span>
+                                </td>
+                                <td>{{ device.brand or device.vendor or '-' }}</td>
+                                <td>
+                                    {% if device.owner %}
+                                        <div class="flex items-center space-x-2">
+                                            <div class="avatar">
+                                                <div class="w-6 h-6 rounded-full bg-secondary text-secondary-content flex items-center justify-center">
+                                                    <span class="text-xs">{{ device.owner.name[0] }}</span>
+                                                </div>
+                                            </div>
+                                            <span>{{ device.owner.name }}</span>
+                                        </div>
+                                    {% else %}
+                                        <span class="text-base-content/50">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <time class="text-sm" title="{{ device.last_seen.isoformat() if device.last_seen }}">
+                                        {{ device.last_seen.strftime('%m/%d %H:%M') if device.last_seen else '-' }}
+                                    </time>
+                                </td>
+                                <td>
+                                    <div class="flex space-x-1">
+                                        <a href="{{ url_for('device_detail', device_id=device.id) }}" 
+                                           class="btn btn-ghost btn-xs">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <a href="{{ url_for('edit_device', device_id=device.id) }}" 
+                                           class="btn btn-ghost btn-xs">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                    </div>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
-                <a href="{{ url_for('devices') }}" class="btn btn-primary">View All Devices</a>
+                <div class="card-actions justify-end mt-4">
+                    <a href="{{ url_for('devices') }}" class="btn btn-primary btn-sm">
+                        View All Devices
+                        <i class="fas fa-arrow-right ml-2"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Changes -->
+    <div class="card bg-base-200 shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title">
+                <i class="fas fa-history mr-2"></i>Recent Changes
+            </h2>
+            <div class="text-sm text-base-content/70 mb-4">
+                Changes in the last 24 hours
+            </div>
+            <div id="recent-changes" hx-get="/api/recent-changes" hx-trigger="load, scan-completed from:body">
+                <div class="flex items-center justify-center py-8">
+                    <span class="loading loading-spinner loading-md"></span>
+                    <span class="ml-2">Loading recent changes...</span>
+                </div>
             </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
 <script>
-function startScan() {
-    const button = event.target;
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Scanning...';
-    
-    fetch('/scan', { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert(`Scan completed! Found ${data.devices_found} devices.`);
-                location.reload();
-            } else {
-                alert(`Scan failed: ${data.error}`);
+function dashboardData() {
+    return {
+        isScanning: false,
+        scanProgress: 0,
+        scanStatus: '',
+        devicesFound: 0,
+        newDevices: 0,
+        lastScanFormatted: '{{ last_scan.strftime("%H:%M") if last_scan else "Never" }}',
+        
+        init() {
+            this.setupSSE();
+        },
+        
+        setupSSE() {
+            // Setup Server-Sent Events for real-time updates
+            if (typeof(EventSource) !== "undefined") {
+                const eventSource = new EventSource('/api/sse/dashboard');
+                
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    this.handleSSEUpdate(data);
+                };
+                
+                eventSource.onerror = (error) => {
+                    console.log('SSE connection error:', error);
+                };
             }
-        })
-        .catch(error => {
-            alert(`Error: ${error}`);
-        })
-        .finally(() => {
-            button.disabled = false;
-            button.innerHTML = '<i class="fas fa-search me-2"></i>Scan Now';
-        });
+        },
+        
+        handleSSEUpdate(data) {
+            if (data.type === 'scan_progress') {
+                this.isScanning = true;
+                this.scanProgress = data.progress;
+                this.scanStatus = data.status;
+                this.devicesFound = data.devices_found || 0;
+                this.newDevices = data.new_devices || 0;
+            } else if (data.type === 'scan_complete') {
+                this.isScanning = false;
+                this.scanProgress = 100;
+                showToast(`Scan completed! Found ${data.devices_found} devices.`, 'success');
+            }
+        }
+    }
+}
+
+function exportDevices(format) {
+    const url = `/api/export/devices?format=${format}`;
+    window.open(url, '_blank');
+    showToast(`Exporting devices as ${format.toUpperCase()}...`, 'info');
 }
 </script>
 {% endblock %}

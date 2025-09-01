@@ -1,4 +1,4 @@
-/* GitHub-style NetScan UI */
+/* Enhanced NetScan UI with DaisyUI support */
 
 :root {
     --color-canvas-default: #ffffff;
@@ -35,19 +35,301 @@
     --color-primer-shadow-inset: inset 0 1px 0 rgba(110, 118, 129, 0.4);
 }
 
-body {
-    background-color: var(--color-canvas-default);
-    color: var(--color-fg-default);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-    font-size: 14px;
-    line-height: 1.5;
-    margin: 0;
-    min-height: 100vh;
+/* Custom enhancements for NetScan */
+.device-status-online {
+    @apply bg-success text-success-content;
 }
 
-.navbar {
-    background-color: var(--color-canvas-default) !important;
-    border-bottom: 1px solid var(--color-border-default);
+.device-status-offline {
+    @apply bg-base-300 text-base-content;
+}
+
+/* Loading states */
+.scan-progress {
+    @apply transition-all duration-300 ease-in-out;
+}
+
+/* Custom table styles */
+.table-enhanced {
+    @apply table-compact;
+}
+
+.table-enhanced th {
+    @apply bg-base-300 text-base-content font-semibold;
+}
+
+.table-enhanced tbody tr:hover {
+    @apply bg-base-200;
+}
+
+/* Device type icons */
+.device-icon {
+    @apply w-8 h-8 rounded-full flex items-center justify-center text-sm;
+}
+
+.device-icon.computer { @apply bg-blue-500 text-white; }
+.device-icon.phone { @apply bg-green-500 text-white; }
+.device-icon.router { @apply bg-purple-500 text-white; }
+.device-icon.printer { @apply bg-orange-500 text-white; }
+.device-icon.iot { @apply bg-pink-500 text-white; }
+.device-icon.default { @apply bg-primary text-primary-content; }
+
+/* Badge styles for ports */
+.port-badge {
+    @apply badge badge-outline badge-xs;
+}
+
+/* Timeline grid styles */
+.timeline-grid {
+    font-size: 12px;
+    overflow-x: auto;
+}
+
+.timeline-header {
+    display: flex;
+    margin-bottom: 8px;
+}
+
+.timeline-month {
+    flex: 1;
+    text-align: center;
+    font-weight: 600;
+    color: var(--color-fg-muted);
+}
+
+.timeline-days {
+    display: flex;
+}
+
+.timeline-day-labels {
+    width: 60px;
+    display: flex;
+    flex-direction: column;
+    margin-right: 8px;
+}
+
+.timeline-day-label {
+    height: 11px;
+    font-size: 9px;
+    color: var(--color-fg-muted);
+    display: flex;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+.timeline-weeks {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.timeline-week {
+    display: flex;
+    gap: 2px;
+}
+
+.timeline-cell {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.timeline-cell:hover {
+    outline: 1px solid var(--color-accent-fg);
+    outline-offset: 1px;
+}
+
+.timeline-cell.online {
+    background-color: var(--color-success-fg);
+}
+
+.timeline-cell.offline {
+    background-color: var(--color-border-muted);
+}
+
+.timeline-cell.high {
+    background-color: var(--color-success-fg);
+}
+
+.timeline-cell.moderate {
+    background-color: #40c463;
+}
+
+.timeline-cell.low {
+    background-color: #9be9a8;
+}
+
+.timeline-cell.no-data {
+    background-color: var(--color-canvas-subtle);
+    border: 1px solid var(--color-border-default);
+}
+
+/* Animation enhancements */
+@keyframes pulse-success {
+    0%, 100% { @apply bg-success; }
+    50% { @apply bg-success/70; }
+}
+
+@keyframes pulse-error {
+    0%, 100% { @apply bg-error; }
+    50% { @apply bg-error/70; }
+}
+
+.pulse-success {
+    animation: pulse-success 2s infinite;
+}
+
+.pulse-error {
+    animation: pulse-error 2s infinite;
+}
+
+/* Smooth transitions for state changes */
+.device-row {
+    @apply transition-all duration-300 ease-in-out;
+}
+
+.device-row.updating {
+    @apply opacity-50;
+}
+
+/* Custom scrollbar for webkit browsers */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-base-300;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-base-content/20 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-base-content/30;
+}
+
+/* Enhanced stats cards */
+.stat-enhanced {
+    @apply bg-gradient-to-br from-base-200 to-base-300 border border-base-300;
+}
+
+/* Enhanced form styling */
+.form-enhanced .form-control {
+    @apply mb-4;
+}
+
+.form-enhanced .label {
+    @apply font-medium;
+}
+
+/* Status indicators */
+.status-indicator {
+    @apply inline-flex items-center;
+}
+
+.status-indicator.online::before {
+    content: '';
+    @apply w-2 h-2 bg-success rounded-full mr-2;
+}
+
+.status-indicator.offline::before {
+    content: '';
+    @apply w-2 h-2 bg-base-300 rounded-full mr-2;
+}
+
+/* Enhanced buttons */
+.btn-enhanced {
+    @apply transition-all duration-200 ease-in-out;
+}
+
+.btn-enhanced:hover {
+    @apply scale-105 shadow-lg;
+}
+
+/* Toast animations */
+.toast-enter {
+    @apply opacity-0 translate-x-full;
+}
+
+.toast-enter-active {
+    @apply opacity-100 translate-x-0 transition-all duration-300 ease-out;
+}
+
+.toast-exit {
+    @apply opacity-100 translate-x-0;
+}
+
+.toast-exit-active {
+    @apply opacity-0 translate-x-full transition-all duration-300 ease-in;
+}
+
+/* Loading skeleton */
+.skeleton-loader {
+    @apply animate-pulse bg-base-300 rounded;
+}
+
+/* Enhanced table responsiveness */
+@media (max-width: 768px) {
+    .table-responsive-stack {
+        display: block;
+    }
+    
+    .table-responsive-stack thead {
+        display: none;
+    }
+    
+    .table-responsive-stack tbody,
+    .table-responsive-stack tr,
+    .table-responsive-stack td {
+        display: block;
+        width: 100%;
+    }
+    
+    .table-responsive-stack tr {
+        @apply border border-base-300 mb-4 p-4 rounded-lg;
+    }
+    
+    .table-responsive-stack td {
+        @apply border-none pb-2;
+        position: relative;
+        padding-left: 50% !important;
+    }
+    
+    .table-responsive-stack td:before {
+        content: attr(data-label);
+        position: absolute;
+        left: 16px;
+        width: 45%;
+        padding-right: 10px;
+        white-space: nowrap;
+        @apply font-semibold text-base-content/70;
+    }
+}
+
+/* Dark mode specific adjustments */
+[data-theme="dark"] .timeline-cell.no-data {
+    background-color: var(--color-canvas-subtle);
+    border: 1px solid var(--color-border-default);
+}
+
+[data-theme="dark"] .card {
+    @apply shadow-lg;
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    .table {
+        @apply text-black;
+    }
+}
     box-shadow: 0 1px 0 rgba(27, 31, 36, 0.04);
     padding: 16px 0;
 }

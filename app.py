@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, Response
 from flask_migrate import Migrate
 from flask_login import LoginManager, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
@@ -1104,6 +1104,280 @@ def speed_test_full():
 
 # Add rate limiting to login route
 limiter.limit("5 per minute")(auth_bp.view_functions['login'])
+
+# Enhanced API endpoints for improved UI/UX
+@app.route('/api/scan/start', methods=['POST'])
+@login_required
+def api_scan_start():
+    """Start network scan with progress tracking"""
+    try:
+        # Start scan in background
+        scanner = NetworkScanner()
+        devices = scanner.scan_network()
+        scanner.mark_offline_devices()
+        
+        return jsonify({
+            'success': True,
+            'devices_found': len(devices),
+            'message': 'Scan completed successfully'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        })
+
+@app.route('/api/devices/table')
+@login_required
+def api_devices_table():
+    """Get devices data for table updates"""
+    try:
+        devices = Device.query.order_by(Device.last_seen.desc()).limit(10).all()
+        device_data = []
+        
+        for device in devices:
+            device_data.append({
+                'id': device.id,
+                'hostname': device.hostname,
+                'ip_address': device.ip_address,
+                'mac_address': device.mac_address,
+                'brand': device.brand,
+                'vendor': device.vendor,
+                'is_online': device.is_online,
+                'last_seen': device.last_seen.isoformat() if device.last_seen else None,
+                'owner': {'name': device.owner.name} if device.owner else None,
+                'icon': device.icon,
+                'device_type': device.device_type
+            })
+        
+        return jsonify(device_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/devices/merge', methods=['POST'])
+@login_required
+@requires_permission('editor')
+def api_devices_merge():
+    """Merge multiple devices"""
+    try:
+        data = request.get_json()
+        device_ids = data.get('device_ids', [])
+        
+        if len(device_ids) < 2:
+            return jsonify({'success': False, 'error': 'At least 2 devices required for merging'})
+        
+        devices = Device.query.filter(Device.id.in_(device_ids)).all()
+        if len(devices) != len(device_ids):
+            return jsonify({'success': False, 'error': 'Some devices not found'})
+        
+        # Use the first device as the primary
+        primary_device = devices[0]
+        mac_addresses = [primary_device.mac_address]
+        
+        # Collect all MAC addresses from devices to be merged
+        for device in devices[1:]:
+            mac_addresses.append(device.mac_address)
+            # Add any already merged MAC addresses
+            if device.merged_devices:
+                try:
+                    existing_macs = json.loads(device.merged_devices)
+                    mac_addresses.extend(existing_macs)
+                except:
+                    pass
+        
+        # Update primary device with merged MAC addresses
+        primary_device.merged_devices = json.dumps(list(set(mac_addresses[1:])))  # Exclude primary MAC
+        
+        # Delete the other devices
+        for device in devices[1:]:
+            db.session.delete(device)
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': f'Merged {len(devices)} devices successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/devices/<int:device_id>/scan', methods=['POST'])
+@login_required
+def api_device_scan(device_id):
+    """Scan specific device for open ports"""
+    try:
+        device = Device.query.get_or_404(device_id)
+        scanner = NetworkScanner()
+        
+        if device.ip_address:
+            open_ports = scanner.scan_ports(device.ip_address)
+            device.open_ports = json.dumps(open_ports)
+            device.last_seen = datetime.utcnow()
+            db.session.commit()
+            
+            return jsonify({
+                'success': True,
+                'open_ports': open_ports,
+                'message': f'Found {len(open_ports)} open ports'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Device has no IP address'
+            })
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/api/export/devices')
+@login_required
+def api_export_devices():
+    """Export devices in various formats"""
+    try:
+        format_type = request.args.get('format', 'csv').lower()
+        devices = Device.query.all()
+        
+        if format_type == 'csv':
+            import csv
+            import io
+            
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Header
+            writer.writerow([
+                'ID', 'Hostname', 'IP Address', 'MAC Address', 'Brand', 'Vendor',
+                'Device Type', 'OS Info', 'Online', 'First Seen', 'Last Seen',
+                'Open Ports', 'Owner'
+            ])
+            
+            # Data
+            for device in devices:
+                writer.writerow([
+                    device.id,
+                    device.hostname or '',
+                    device.ip_address or '',
+                    device.mac_address or '',
+                    device.brand or '',
+                    device.vendor or '',
+                    device.device_type or '',
+                    device.os_info or '',
+                    'Yes' if device.is_online else 'No',
+                    device.first_seen.isoformat() if device.first_seen else '',
+                    device.last_seen.isoformat() if device.last_seen else '',
+                    device.open_ports or '',
+                    device.owner.name if device.owner else ''
+                ])
+            
+            output.seek(0)
+            return Response(
+                output.getvalue(),
+                mimetype='text/csv',
+                headers={'Content-Disposition': 'attachment;filename=netscan_devices.csv'}
+            )
+            
+        elif format_type == 'json':
+            device_data = []
+            for device in devices:
+                device_data.append({
+                    'id': device.id,
+                    'hostname': device.hostname,
+                    'ip_address': device.ip_address,
+                    'mac_address': device.mac_address,
+                    'brand': device.brand,
+                    'vendor': device.vendor,
+                    'device_type': device.device_type,
+                    'os_info': device.os_info,
+                    'is_online': device.is_online,
+                    'first_seen': device.first_seen.isoformat() if device.first_seen else None,
+                    'last_seen': device.last_seen.isoformat() if device.last_seen else None,
+                    'open_ports': json.loads(device.open_ports) if device.open_ports else [],
+                    'owner': device.owner.name if device.owner else None
+                })
+            
+            return jsonify(device_data)
+            
+        else:
+            return jsonify({'error': 'Unsupported format'}), 400
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/recent-changes')
+@login_required
+def api_recent_changes():
+    """Get recent device changes"""
+    try:
+        # Get devices that changed in the last 24 hours
+        since = datetime.utcnow() - timedelta(hours=24)
+        recent_scans = Scan.query.filter(Scan.timestamp >= since).order_by(Scan.timestamp.desc()).limit(10).all()
+        
+        changes = []
+        for scan in recent_scans:
+            device = Device.query.get(scan.device_id)
+            if device:
+                changes.append({
+                    'timestamp': scan.timestamp.isoformat(),
+                    'device': {
+                        'hostname': device.hostname,
+                        'ip_address': device.ip_address,
+                        'mac_address': device.mac_address
+                    },
+                    'status': 'online' if scan.is_online else 'offline',
+                    'type': 'status_change'
+                })
+        
+        if not changes:
+            changes.append({
+                'timestamp': datetime.utcnow().isoformat(),
+                'message': 'No recent changes',
+                'type': 'info'
+            })
+        
+        # Return HTML for HTMX
+        html = '<div class="space-y-2">'
+        for change in changes:
+            if change.get('type') == 'info':
+                html += f'<div class="text-center text-base-content/50 py-4">{change["message"]}</div>'
+            else:
+                status_class = 'text-success' if change['status'] == 'online' else 'text-error'
+                html += f'''
+                <div class="flex items-center justify-between p-3 bg-base-100 rounded-lg">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-2 h-2 rounded-full bg-{"success" if change["status"] == "online" else "error"}"></div>
+                        <div>
+                            <div class="font-medium">{change["device"]["hostname"] or "Unknown"}</div>
+                            <div class="text-sm text-base-content/70">{change["device"]["ip_address"]}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-sm {status_class} capitalize">{change["status"]}</div>
+                        <div class="text-xs text-base-content/50">{datetime.fromisoformat(change["timestamp"]).strftime("%H:%M")}</div>
+                    </div>
+                </div>
+                '''
+        html += '</div>'
+        
+        return html
+        
+    except Exception as e:
+        return f'<div class="text-error">Error loading changes: {str(e)}</div>'
+
+@app.route('/api/sse/dashboard')
+@login_required
+def api_sse_dashboard():
+    """Server-Sent Events for dashboard updates"""
+    def event_stream():
+        # This is a basic implementation - in production you'd want proper SSE handling
+        yield f"data: {json.dumps({'type': 'connected', 'message': 'Connected to dashboard updates'})}\n\n"
+        
+        # For now, just send a heartbeat every 30 seconds
+        import time
+        while True:
+            time.sleep(30)
+            yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+    
+    return Response(event_stream(), mimetype='text/event-stream',
+                   headers={'Cache-Control': 'no-cache', 'Connection': 'keep-alive'})
 
 # Initialize database and create admin user
 def initialize_app():

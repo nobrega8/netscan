@@ -3,159 +3,523 @@
 {% block title %}Devices - NetScan{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Network Devices</h2>
-    <div>
-        <button class="btn btn-warning" id="merge-button" onclick="mergeSelectedDevices()" disabled>
-            <i class="fas fa-compress-arrows-alt me-2"></i>Merge Devices
-        </button>
-        <button class="btn btn-primary" onclick="startScan()">
-            <i class="fas fa-search me-2"></i>Scan Network
-        </button>
+<div class="space-y-6" x-data="devicesData()">
+    <!-- Header -->
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Network Devices</h1>
+            <p class="text-base-content/70 mt-1">Manage and monitor all discovered devices</p>
+        </div>
+        <div class="mt-4 lg:mt-0 flex gap-2">
+            <button 
+                x-show="selectedDevices.length > 1"
+                class="btn btn-warning"
+                @click="mergeSelectedDevices()"
+            >
+                <i class="fas fa-compress-arrows-alt mr-2"></i>
+                Merge Devices (<span x-text="selectedDevices.length"></span>)
+            </button>
+            <button 
+                class="btn btn-primary"
+                onclick="startEnhancedScan()"
+            >
+                <i class="fas fa-search mr-2"></i>Scan Network
+            </button>
+            <div class="dropdown dropdown-end">
+                <label tabindex="0" class="btn btn-outline">
+                    <i class="fas fa-download mr-2"></i>Export
+                </label>
+                <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52">
+                    <li><a @click="exportDevices('csv')"><i class="fas fa-file-csv mr-2"></i>Export CSV</a></li>
+                    <li><a @click="exportDevices('excel')"><i class="fas fa-file-excel mr-2"></i>Export Excel</a></li>
+                    <li><a @click="exportDevices('json')"><i class="fas fa-file-code mr-2"></i>Export JSON</a></li>
+                </ul>
+            </div>
+        </div>
     </div>
-</div>
 
-<div class="alert alert-info">
-    <i class="fas fa-info-circle me-2"></i>
-    <strong>Device Merging:</strong> Select multiple devices with the same owner to merge their MAC addresses. 
-    Check the boxes next to devices, then click "Merge Devices".
-</div>
+    <!-- Filters and Search -->
+    <div class="card bg-base-200 shadow-sm">
+        <div class="card-body p-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Search</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        placeholder="Search devices..." 
+                        class="input input-bordered input-sm"
+                        x-model="searchTerm"
+                        @input="filterDevices()"
+                    >
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Status</span>
+                    </label>
+                    <select class="select select-bordered select-sm" x-model="statusFilter" @change="filterDevices()">
+                        <option value="">All Devices</option>
+                        <option value="online">Online Only</option>
+                        <option value="offline">Offline Only</option>
+                    </select>
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Device Type</span>
+                    </label>
+                    <select class="select select-bordered select-sm" x-model="typeFilter" @change="filterDevices()">
+                        <option value="">All Types</option>
+                        <option value="computer">Computer</option>
+                        <option value="phone">Phone</option>
+                        <option value="router">Router</option>
+                        <option value="printer">Printer</option>
+                        <option value="iot">IoT Device</option>
+                    </select>
+                </div>
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Sort By</span>
+                    </label>
+                    <select class="select select-bordered select-sm" x-model="sortBy" @change="sortDevices()">
+                        <option value="hostname">Hostname</option>
+                        <option value="ip_address">IP Address</option>
+                        <option value="last_seen">Last Seen</option>
+                        <option value="first_seen">First Seen</option>
+                        <option value="brand">Brand</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex justify-between items-center mt-4">
+                <div class="text-sm text-base-content/70">
+                    Showing <span x-text="filteredDevices.length"></span> of <span x-text="allDevices.length"></span> devices
+                </div>
+                <button class="btn btn-ghost btn-sm" @click="clearFilters()">
+                    <i class="fas fa-times mr-2"></i>Clear Filters
+                </button>
+            </div>
+        </div>
+    </div>
 
-<div class="card">
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Select</th>
-                        <th>Status</th>
-                        <th>Device</th>
-                        <th>IP Address</th>
-                        <th>MAC Address</th>
-                        <th>Brand/Model</th>
-                        <th>Owner</th>
-                        <th>Ports</th>
-                        <th>Last Seen</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for device in devices %}
-                    <tr data-device-id="{{ device.id }}">
-                        <td>
-                            <input type="checkbox" class="form-check-input" 
-                                   data-device-id="{{ device.id }}" 
-                                   onchange="toggleDeviceSelection({{ device.id }})">
-                        </td>
-                        <td>
-                            {% if device.is_online %}
-                                <span class="badge bg-success">
-                                    <i class="fas fa-circle me-1"></i>Online
-                                </span>
-                            {% else %}
-                                <span class="badge bg-secondary">
-                                    <i class="fas fa-circle me-1"></i>Offline
-                                </span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="d-flex align-items-center">
-                                {% if device.image_path %}
-                                    <img src="{{ url_for('uploaded_file', filename=device.image_path) }}" 
-                                         alt="Device" class="me-2" style="width: 40px; height: 40px; border-radius: 8px; object-fit: cover;">
-                                {% else %}
-                                    <i class="fas fa-{{ device.icon or 'device' }} me-2 text-primary" style="font-size: 1.5em;"></i>
-                                {% endif %}
-                                <div>
-                                    <a href="{{ url_for('device_detail', device_id=device.id) }}" class="text-decoration-none">
-                                        <strong>{{ device.hostname or 'Unknown' }}</strong>
-                                    </a>
-                                    {% if device.merged_devices %}
-                                        <br><small class="text-muted">
-                                            <i class="fas fa-compress-arrows-alt"></i> Merged device
-                                        </small>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </td>
-                        <td>{{ device.ip_address }}</td>
-                        <td><code>{{ device.mac_address }}</code></td>
-                        <td>
-                            {% if device.brand %}
-                                {{ device.brand }}
-                                {% if device.model %}/ {{ device.model }}{% endif %}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if device.owner %}
-                                <a href="{{ url_for('person_detail', person_id=device.owner.id) }}">
-                                    {{ device.owner.name }}
-                                </a>
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if device.open_ports %}
-                                {% set ports = device.open_ports | from_json %}
-                                {% for port in ports[:3] %}
-                                    <span class="badge bg-secondary me-1">{{ port }}</span>
-                                {% endfor %}
-                                {% if ports | length > 3 %}
-                                    <span class="badge bg-info">+{{ ports | length - 3 }}</span>
-                                {% endif %}
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>{{ device.last_seen.strftime('%Y-%m-%d %H:%M') if device.last_seen else '-' }}</td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <a href="{{ url_for('device_detail', device_id=device.id) }}" 
-                                   class="btn btn-outline-primary">
-                                    <i class="fas fa-eye"></i>
-                                </a>
-                                <a href="{{ url_for('edit_device', device_id=device.id) }}" 
-                                   class="btn btn-outline-secondary">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <!-- Device Merge Information -->
+    <div x-show="selectedDevices.length > 0" class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        <span>
+            <strong>Device Merging:</strong> You have selected <span x-text="selectedDevices.length"></span> device(s). 
+            Select multiple devices with the same owner to merge their MAC addresses.
+        </span>
+        <div>
+            <button class="btn btn-sm btn-ghost" @click="clearSelection()">Clear Selection</button>
+        </div>
+    </div>
+
+    <!-- Devices Table -->
+    <div class="card bg-base-200 shadow-sm">
+        <div class="card-body p-0">
+            <div class="overflow-x-auto">
+                <table class="table table-compact w-full">
+                    <thead class="bg-base-300">
+                        <tr>
+                            <th>
+                                <label>
+                                    <input 
+                                        type="checkbox" 
+                                        class="checkbox checkbox-sm"
+                                        @change="toggleSelectAll($event.target.checked)"
+                                        :checked="allVisible
+()Selected"
+                                    >
+                                </label>
+                            </th>
+                            <th class="cursor-pointer" @click="setSortBy('is_online')">
+                                Status
+                                <i class="fas fa-sort ml-1" :class="getSortIcon('is_online')"></i>
+                            </th>
+                            <th class="cursor-pointer" @click="setSortBy('hostname')">
+                                Device
+                                <i class="fas fa-sort ml-1" :class="getSortIcon('hostname')"></i>
+                            </th>
+                            <th class="cursor-pointer" @click="setSortBy('ip_address')">
+                                IP Address
+                                <i class="fas fa-sort ml-1" :class="getSortIcon('ip_address')"></i>
+                            </th>
+                            <th>MAC Address</th>
+                            <th class="cursor-pointer" @click="setSortBy('brand')">
+                                Brand/Vendor
+                                <i class="fas fa-sort ml-1" :class="getSortIcon('brand')"></i>
+                            </th>
+                            <th>Owner</th>
+                            <th class="cursor-pointer" @click="setSortBy('last_seen')">
+                                Last Seen
+                                <i class="fas fa-sort ml-1" :class="getSortIcon('last_seen')"></i>
+                            </th>
+                            <th>Ports</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="device in paginatedDevices" :key="device.id">
+                            <tr :class="selectedDevices.includes(device.id) ? 'bg-primary/10' : ''">
+                                <td>
+                                    <label>
+                                        <input 
+                                            type="checkbox" 
+                                            class="checkbox checkbox-sm"
+                                            :value="device.id"
+                                            @change="toggleDeviceSelection(device.id, $event.target.checked)"
+                                            :checked="selectedDevices.includes(device.id)"
+                                        >
+                                    </label>
+                                </td>
+                                <td>
+                                    <div x-show="device.is_online" class="badge badge-success gap-2">
+                                        <i class="fas fa-circle text-xs"></i>
+                                        Online
+                                    </div>
+                                    <div x-show="!device.is_online" class="badge badge-ghost gap-2">
+                                        <i class="fas fa-circle text-xs"></i>
+                                        Offline
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="flex items-center space-x-3">
+                                        <div class="avatar">
+                                            <div class="mask mask-circle w-10 h-10 bg-primary text-primary-content flex items-center justify-center">
+                                                <i :class="`fas fa-${device.icon || 'desktop'} text-sm`"></i>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div class="font-bold" x-text="device.hostname || 'Unknown'"></div>
+                                            <div class="text-sm opacity-50" x-text="device.device_type || device.category || ''"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="font-mono text-sm" x-text="device.ip_address"></span>
+                                </td>
+                                <td>
+                                    <span class="font-mono text-sm" x-text="device.mac_address"></span>
+                                    <div x-show="device.merged_devices && JSON.parse(device.merged_devices || '[]').length > 0" 
+                                         class="badge badge-info badge-xs mt-1">
+                                        +<span x-text="JSON.parse(device.merged_devices || '[]').length"></span> merged
+                                    </div>
+                                </td>
+                                <td>
+                                    <div x-text="device.brand || device.vendor || '-'"></div>
+                                    <div x-show="device.os_info" class="text-sm opacity-50" x-text="device.os_info"></div>
+                                </td>
+                                <td>
+                                    <div x-show="device.owner">
+                                        <div class="flex items-center space-x-2">
+                                            <div class="avatar">
+                                                <div class="w-6 h-6 rounded-full bg-secondary text-secondary-content flex items-center justify-center">
+                                                    <span class="text-xs" x-text="device.owner?.name?.[0] || '?'"></span>
+                                                </div>
+                                            </div>
+                                            <span x-text="device.owner?.name || ''"></span>
+                                        </div>
+                                    </div>
+                                    <span x-show="!device.owner" class="text-base-content/50">-</span>
+                                </td>
+                                <td>
+                                    <time class="text-sm" x-text="formatDateTime(device.last_seen)"></time>
+                                </td>
+                                <td>
+                                    <div x-show="device.open_ports" class="space-y-1">
+                                        <template x-for="port in JSON.parse(device.open_ports || '[]').slice(0, 3)">
+                                            <div class="badge badge-outline badge-xs" x-text="port"></div>
+                                        </template>
+                                        <div x-show="JSON.parse(device.open_ports || '[]').length > 3" 
+                                             class="text-xs text-base-content/50">
+                                            +<span x-text="JSON.parse(device.open_ports || '[]').length - 3"></span> more
+                                        </div>
+                                    </div>
+                                    <span x-show="!device.open_ports || JSON.parse(device.open_ports || '[]').length === 0" 
+                                          class="text-base-content/50 text-sm">No ports</span>
+                                </td>
+                                <td>
+                                    <div class="flex space-x-1">
+                                        <a :href="`/device/${device.id}`" class="btn btn-ghost btn-xs" title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <a :href="`/device/${device.id}/edit`" class="btn btn-ghost btn-xs" title="Edit Device">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <button class="btn btn-ghost btn-xs" @click="scanDevice(device)" title="Scan Ports">
+                                            <i class="fas fa-search"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Pagination -->
+            <div class="flex justify-between items-center p-4 bg-base-300">
+                <div class="text-sm text-base-content/70">
+                    Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span>
+                    (<span x-text="filteredDevices.length"></span> total devices)
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-sm" @click="previousPage()" :disabled="currentPage === 1">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <template x-for="page in visiblePages" :key="page">
+                        <button 
+                            class="btn btn-sm" 
+                            :class="page === currentPage ? 'btn-active' : ''"
+                            @click="goToPage(page)"
+                            x-text="page"
+                        ></button>
+                    </template>
+                    <button class="btn btn-sm" @click="nextPage()" :disabled="currentPage === totalPages">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
 <script>
-function startScan() {
-    const button = event.target;
-    button.disabled = true;
-    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Scanning...';
-    
-    fetch('/scan', { method: 'POST' })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert(`Scan completed! Found ${data.devices_found} devices.`);
-                location.reload();
-            } else {
-                alert(`Scan failed: ${data.error}`);
+function devicesData() {
+    return {
+        allDevices: {{ devices | tojson }},
+        filteredDevices: [],
+        selectedDevices: [],
+        searchTerm: '',
+        statusFilter: '',
+        typeFilter: '',
+        sortBy: 'hostname',
+        sortDirection: 'asc',
+        currentPage: 1,
+        itemsPerPage: 25,
+        
+        init() {
+            this.filteredDevices = [...this.allDevices];
+            this.sortDevices();
+        },
+        
+        get paginatedDevices() {
+            const start = (this.currentPage - 1) * this.itemsPerPage;
+            const end = start + this.itemsPerPage;
+            return this.filteredDevices.slice(start, end);
+        },
+        
+        get totalPages() {
+            return Math.ceil(this.filteredDevices.length / this.itemsPerPage);
+        },
+        
+        get visiblePages() {
+            const pages = [];
+            const start = Math.max(1, this.currentPage - 2);
+            const end = Math.min(this.totalPages, this.currentPage + 2);
+            
+            for (let i = start; i <= end; i++) {
+                pages.push(i);
             }
-        })
-        .catch(error => {
-            alert(`Error: ${error}`);
-        })
-        .finally(() => {
-            button.disabled = false;
-            button.innerHTML = '<i class="fas fa-search me-2"></i>Scan Network';
-        });
+            return pages;
+        },
+        
+        get allVisibleSelected() {
+            const visibleIds = this.paginatedDevices.map(d => d.id);
+            return visibleIds.length > 0 && visibleIds.every(id => this.selectedDevices.includes(id));
+        },
+        
+        filterDevices() {
+            this.filteredDevices = this.allDevices.filter(device => {
+                const matchesSearch = !this.searchTerm || 
+                    device.hostname?.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+                    device.ip_address?.includes(this.searchTerm) ||
+                    device.mac_address?.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+                    device.brand?.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+                    device.vendor?.toLowerCase().includes(this.searchTerm.toLowerCase());
+                
+                const matchesStatus = !this.statusFilter ||
+                    (this.statusFilter === 'online' && device.is_online) ||
+                    (this.statusFilter === 'offline' && !device.is_online);
+                
+                const matchesType = !this.typeFilter ||
+                    device.device_type === this.typeFilter ||
+                    device.category === this.typeFilter;
+                
+                return matchesSearch && matchesStatus && matchesType;
+            });
+            
+            this.currentPage = 1;
+            this.sortDevices();
+        },
+        
+        sortDevices() {
+            this.filteredDevices.sort((a, b) => {
+                let aVal = a[this.sortBy];
+                let bVal = b[this.sortBy];
+                
+                // Handle null/undefined values
+                if (aVal === null || aVal === undefined) aVal = '';
+                if (bVal === null || bVal === undefined) bVal = '';
+                
+                // Special handling for different data types
+                if (this.sortBy === 'last_seen' || this.sortBy === 'first_seen') {
+                    aVal = new Date(aVal || 0);
+                    bVal = new Date(bVal || 0);
+                } else if (this.sortBy === 'is_online') {
+                    aVal = a.is_online ? 1 : 0;
+                    bVal = b.is_online ? 1 : 0;
+                } else {
+                    aVal = String(aVal).toLowerCase();
+                    bVal = String(bVal).toLowerCase();
+                }
+                
+                if (aVal < bVal) return this.sortDirection === 'asc' ? -1 : 1;
+                if (aVal > bVal) return this.sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+        },
+        
+        setSortBy(field) {
+            if (this.sortBy === field) {
+                this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.sortBy = field;
+                this.sortDirection = 'asc';
+            }
+            this.sortDevices();
+        },
+        
+        getSortIcon(field) {
+            if (this.sortBy !== field) return 'text-base-content/30';
+            return this.sortDirection === 'asc' ? 'fa-sort-up text-primary' : 'fa-sort-down text-primary';
+        },
+        
+        clearFilters() {
+            this.searchTerm = '';
+            this.statusFilter = '';
+            this.typeFilter = '';
+            this.sortBy = 'hostname';
+            this.sortDirection = 'asc';
+            this.filterDevices();
+        },
+        
+        toggleDeviceSelection(deviceId, selected) {
+            if (selected) {
+                if (!this.selectedDevices.includes(deviceId)) {
+                    this.selectedDevices.push(deviceId);
+                }
+            } else {
+                const index = this.selectedDevices.indexOf(deviceId);
+                if (index > -1) {
+                    this.selectedDevices.splice(index, 1);
+                }
+            }
+        },
+        
+        toggleSelectAll(selectAll) {
+            const visibleIds = this.paginatedDevices.map(d => d.id);
+            if (selectAll) {
+                visibleIds.forEach(id => {
+                    if (!this.selectedDevices.includes(id)) {
+                        this.selectedDevices.push(id);
+                    }
+                });
+            } else {
+                this.selectedDevices = this.selectedDevices.filter(id => !visibleIds.includes(id));
+            }
+        },
+        
+        clearSelection() {
+            this.selectedDevices = [];
+        },
+        
+        async mergeSelectedDevices() {
+            if (this.selectedDevices.length < 2) {
+                showToast('Please select at least 2 devices to merge', 'error');
+                return;
+            }
+            
+            const confirmed = confirm(`Are you sure you want to merge ${this.selectedDevices.length} devices?`);
+            if (!confirmed) return;
+            
+            try {
+                const response = await fetch('/api/devices/merge', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+                    },
+                    body: JSON.stringify({ device_ids: this.selectedDevices })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showToast('Devices merged successfully', 'success');
+                    location.reload();
+                } else {
+                    showToast(`Error: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error}`, 'error');
+            }
+        },
+        
+        async scanDevice(device) {
+            showToast(`Scanning ports for ${device.hostname || device.ip_address}...`, 'info');
+            
+            try {
+                const response = await fetch(`/api/devices/${device.id}/scan`, {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+                    }
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showToast(`Found ${result.open_ports.length} open ports`, 'success');
+                    // Update device in local data
+                    const deviceIndex = this.allDevices.findIndex(d => d.id === device.id);
+                    if (deviceIndex !== -1) {
+                        this.allDevices[deviceIndex].open_ports = JSON.stringify(result.open_ports);
+                        this.filterDevices();
+                    }
+                } else {
+                    showToast(`Scan failed: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                showToast(`Error: ${error}`, 'error');
+            }
+        },
+        
+        goToPage(page) {
+            this.currentPage = page;
+        },
+        
+        previousPage() {
+            if (this.currentPage > 1) {
+                this.currentPage--;
+            }
+        },
+        
+        nextPage() {
+            if (this.currentPage < this.totalPages) {
+                this.currentPage++;
+            }
+        },
+        
+        formatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        },
+        
+        exportDevices(format) {
+            const url = `/api/export/devices?format=${format}`;
+            window.open(url, '_blank');
+            showToast(`Exporting devices as ${format.toUpperCase()}...`, 'info');
+        }
+    }
 }
 </script>
 {% endblock %}
