@@ -1013,17 +1013,29 @@ def manual_scan():
 @login_required
 def api_devices():
     devices = Device.query.all()
-    return jsonify([{
-        'id': d.id,
-        'hostname': d.hostname,
-        'ip_address': d.ip_address,
-        'mac_address': d.mac_address,
-        'brand': d.brand,
-        'model': d.model,
-        'is_online': d.is_online,
-        'last_seen': d.last_seen.isoformat() if d.last_seen else None,
-        'owner': d.owner.name if d.owner else None
-    } for d in devices])
+    device_data = []
+    for d in devices:
+        # Safe owner access to prevent SQLAlchemy relationship issues
+        owner_name = None
+        if d.person_id:
+            try:
+                person = db.session.get(Person, d.person_id)
+                owner_name = person.name if person else None
+            except Exception:
+                owner_name = None
+        
+        device_data.append({
+            'id': d.id,
+            'hostname': d.hostname,
+            'ip_address': d.ip_address,
+            'mac_address': d.mac_address,
+            'brand': d.brand,
+            'model': d.model,
+            'is_online': d.is_online,
+            'last_seen': d.last_seen.isoformat() if d.last_seen else None,
+            'owner': owner_name
+        })
+    return jsonify(device_data)
 
 @app.route('/merge_devices', methods=['POST'])
 @editor_required
@@ -1436,6 +1448,15 @@ def api_devices_table():
             # Return HTML for HTMX
             html = ''
             for device in devices:
+                # Safe owner access to prevent SQLAlchemy relationship issues
+                owner_name = '-'
+                if device.person_id:
+                    try:
+                        person = db.session.get(Person, device.person_id)
+                        owner_name = person.name if person else '-'
+                    except Exception:
+                        owner_name = '-'
+                
                 status_badge = '''
                     <div class="badge badge-success gap-2">
                         <i class="fas fa-circle text-xs"></i>
@@ -1467,7 +1488,7 @@ def api_devices_table():
                     <td class="text-sm font-mono">{device.ip_address or '-'}</td>
                     <td class="text-xs font-mono">{device.mac_address or '-'}</td>
                     <td class="text-sm">{device.brand or device.vendor or '-'}</td>
-                    <td class="text-sm">{device.owner.name if device.owner else '-'}</td>
+                    <td class="text-sm">{owner_name}</td>
                     <td>
                         <time class="text-sm" title="{device.last_seen.isoformat() if device.last_seen else ''}">
                             {device.last_seen.strftime('%m/%d %H:%M') if device.last_seen else '-'}
@@ -1492,6 +1513,15 @@ def api_devices_table():
             device_data = []
             
             for device in devices:
+                # Safe owner access to prevent SQLAlchemy relationship issues
+                owner_data = None
+                if device.person_id:
+                    try:
+                        person = db.session.get(Person, device.person_id)
+                        owner_data = {'name': person.name} if person else None
+                    except Exception:
+                        owner_data = None
+                
                 device_data.append({
                     'id': device.id,
                     'hostname': device.hostname,
@@ -1501,7 +1531,7 @@ def api_devices_table():
                     'vendor': device.vendor,
                     'is_online': device.is_online,
                     'last_seen': device.last_seen.isoformat() if device.last_seen else None,
-                    'owner': {'name': device.owner.name} if device.owner else None,
+                    'owner': owner_data,
                     'icon': device.icon,
                     'device_type': device.device_type
                 })
@@ -1605,6 +1635,15 @@ def api_export_devices():
             
             # Data
             for device in devices:
+                # Safe owner access to prevent SQLAlchemy relationship issues
+                owner_name = ''
+                if device.person_id:
+                    try:
+                        person = db.session.get(Person, device.person_id)
+                        owner_name = person.name if person else ''
+                    except Exception:
+                        owner_name = ''
+                
                 writer.writerow([
                     device.id,
                     device.hostname or '',
@@ -1618,7 +1657,7 @@ def api_export_devices():
                     device.first_seen.isoformat() if device.first_seen else '',
                     device.last_seen.isoformat() if device.last_seen else '',
                     device.open_ports or '',
-                    device.owner.name if device.owner else ''
+                    owner_name
                 ])
             
             output.seek(0)
@@ -1631,6 +1670,15 @@ def api_export_devices():
         elif format_type == 'json':
             device_data = []
             for device in devices:
+                # Safe owner access to prevent SQLAlchemy relationship issues
+                owner_name = None
+                if device.person_id:
+                    try:
+                        person = db.session.get(Person, device.person_id)
+                        owner_name = person.name if person else None
+                    except Exception:
+                        owner_name = None
+                
                 device_data.append({
                     'id': device.id,
                     'hostname': device.hostname,
@@ -1644,7 +1692,7 @@ def api_export_devices():
                     'first_seen': device.first_seen.isoformat() if device.first_seen else None,
                     'last_seen': device.last_seen.isoformat() if device.last_seen else None,
                     'open_ports': json.loads(device.open_ports) if device.open_ports else [],
-                    'owner': device.owner.name if device.owner else None
+                    'owner': owner_name
                 })
             
             return jsonify(device_data)
