@@ -508,6 +508,111 @@ class EnhancedNetworkScanner:
             db.session.rollback()
             print(f"Error updating device: {e}")
             return None
+    
+    def _scan_arp_table(self):
+        """Scan ARP table for device discovery"""
+        devices = []
+        
+        try:
+            # Try different ARP table commands
+            commands = [
+                ['arp', '-a'],
+                ['ip', 'neigh', 'show'],
+                ['cat', '/proc/net/arp']
+            ]
+            
+            for cmd in commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0 and result.stdout:
+                        devices.extend(self._parse_arp_output(result.stdout, cmd[0]))
+                        break
+                except:
+                    continue
+        except Exception as e:
+            print(f"Error scanning ARP table: {e}")
+        
+        return devices
+    
+    def _parse_arp_output(self, output, command_type):
+        """Parse ARP table output"""
+        devices = []
+        
+        for line in output.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            
+            try:
+                if command_type == 'arp':
+                    # Parse "arp -a" output
+                    if '(' in line and ')' in line:
+                        ip_match = re.search(r'\(([\d.]+)\)', line)
+                        mac_match = re.search(r'([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}', line)
+                        
+                        if ip_match and mac_match:
+                            ip = ip_match.group(1)
+                            mac = mac_match.group(0).lower()
+                            
+                            device_info = self._get_enhanced_device_info(ip)
+                            if device_info:
+                                device_info['mac_address'] = mac
+                                devices.append(device_info)
+                
+                elif command_type == 'ip':
+                    # Parse "ip neigh show" output
+                    parts = line.split()
+                    if len(parts) >= 5 and 'lladdr' in parts:
+                        ip = parts[0]
+                        mac_idx = parts.index('lladdr') + 1
+                        if mac_idx < len(parts):
+                            mac = parts[mac_idx].lower()
+                            
+                            device_info = self._get_enhanced_device_info(ip)
+                            if device_info:
+                                device_info['mac_address'] = mac
+                                devices.append(device_info)
+                
+                elif command_type == 'cat':
+                    # Parse "/proc/net/arp" output
+                    parts = line.split()
+                    if len(parts) >= 4 and parts[3] != '00:00:00:00:00:00':
+                        ip = parts[0]
+                        mac = parts[3].lower()
+                        
+                        device_info = self._get_enhanced_device_info(ip)
+                        if device_info:
+                            device_info['mac_address'] = mac
+                            devices.append(device_info)
+                            
+            except Exception as e:
+                print(f"Error parsing ARP line '{line}': {e}")
+                continue
+        
+        return devices
+    
+    def _get_mac_address(self, ip):
+        """Get MAC address for IP"""
+        try:
+            # Use ping first to populate ARP table
+            subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
+                         capture_output=True, timeout=3)
+            
+            # Then check ARP table
+            result = subprocess.run(['arp', '-n', ip], 
+                                  capture_output=True, text=True, timeout=3)
+            
+            if result.returncode == 0 and result.stdout:
+                # Parse ARP output
+                for line in result.stdout.split('\n'):
+                    if ip in line:
+                        mac_match = re.search(r'([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}', line)
+                        if mac_match:
+                            return mac_match.group(0).lower()
+        except:
+            pass
+        
+        return None
 
 # Maintain backwards compatibility
 class NetworkScanner(EnhancedNetworkScanner):
