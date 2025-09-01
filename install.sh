@@ -1,4 +1,3 @@
-sudo tee /opt/netscan/install.sh >/dev/null <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -8,39 +7,45 @@ RUN_GROUP="$(id -gn "$RUN_USER")"
 
 echo "Installing NetScan service as $RUN_USER:$RUN_GROUP ..."
 
-# 1) Copiar código para /opt/netscan (se ainda não estiver aí)
+# 1) Copy code to /opt/netscan (if not already there)
 SRC="$(pwd)"
 if [ "$SRC" != "$APP_DIR" ]; then
   sudo rsync -a --delete "$SRC"/ "$APP_DIR"/
 fi
 sudo chown -R "$RUN_USER:$RUN_GROUP" "$APP_DIR"
 
-# 2) Dependências do sistema (opcional, só se lock estiver livre)
+# 2) Install system dependencies (if lock is free)
 if ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+  echo "Installing python3-venv..."
+  sudo apt update
   sudo apt -y install python3-venv
 else
-  echo "APT está ocupado; a instalar só quando livre ou instala manualmente: sudo apt -y install python3-venv"
+  echo "APT is busy; install manually when free: sudo apt -y install python3-venv"
 fi
 
 # 3) Generate SECRET_KEY if not provided
-if [ -z "$SECRET_KEY" ]; then
+if [ -z "${SECRET_KEY:-}" ]; then
   SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
   echo "Generated SECRET_KEY: $SECRET_KEY"
   echo "Consider setting SECRET_KEY environment variable for production"
 fi
 
-# 4) venv + requirements
+# 4) Create virtual environment and install requirements
 cd "$APP_DIR"
+echo "Creating virtual environment..."
 python3 -m venv venv
+echo "Installing dependencies..."
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
 
 # 5) Run database migrations
+echo "Setting up database..."
 export FLASK_APP=app.py
 export SECRET_KEY="$SECRET_KEY"
 ./venv/bin/flask db upgrade 2>/dev/null || echo "Database migration not needed or failed"
 
-# 6) Criar/atualizar serviço systemd
+# 6) Create/update systemd service
+echo "Creating systemd service..."
 sudo tee /etc/systemd/system/netscan.service >/dev/null <<SERVICE
 [Unit]
 Description=NetScan Network Device Scanner
@@ -64,10 +69,14 @@ RestartSec=3
 WantedBy=multi-user.target
 SERVICE
 
+echo "Starting and enabling service..."
 sudo systemctl daemon-reload
 sudo systemctl enable --now netscan
 sudo systemctl status netscan --no-pager
-echo "Done."
-EOF
-
-sudo chmod +x /opt/netscan/install.sh
+echo "Done. NetScan service is now running!"
+echo ""
+echo "Useful commands:"
+echo "  View logs: sudo journalctl -u netscan -f"
+echo "  Stop service: sudo systemctl stop netscan"
+echo "  Start service: sudo systemctl start netscan"
+echo "  Restart service: sudo systemctl restart netscan"

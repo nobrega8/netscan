@@ -41,32 +41,106 @@ On first installation, a default admin user is created:
 
 ## Installation
 
-### Quick Start (Development)
+### Recommended Installation (Production Service)
+
+This is the recommended method for most users, especially on Raspberry Pi and other Linux systems:
 
 ```bash
 # Clone the repository
 git clone https://github.com/nobrega8/netscan.git
 cd netscan
 
-# Install dependencies
-pip3 install -r requirements.txt
+# Install system dependencies (required on Raspberry Pi/Debian)
+sudo apt update
+sudo apt install python3-venv
+
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate
+
+# Upgrade pip and install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
 
 # Set up authentication (recommended)
 export SECRET_KEY="your-secret-key-here"
 export ADMIN_USERNAME="your-admin-username"  # optional, defaults to 'admin'
 export ADMIN_PASSWORD="your-secure-password"  # optional, defaults to 'admin123'
 
-# Initialize database (for new installations)
+# Initialize database
 export FLASK_APP=app.py
 flask db upgrade
 
-# Run the application
+# Run as service (recommended) - see Service Installation section below
+# OR run manually for testing:
 python3 app.py
 ```
 
 Access the web interface at: http://localhost:2530
 
 **First Login**: Use the default credentials (admin/admin123) and you'll be prompted to change the password.
+
+**Note for Raspberry Pi Users**: The `python3-venv` package is required to avoid PEP 668 errors on modern Debian systems. Using a virtual environment keeps dependencies isolated and prevents conflicts with system packages.
+
+### Service Installation (Recommended for Production)
+
+For production use, especially on Raspberry Pi, install NetScan as a systemd service:
+
+```bash
+# After completing the basic installation above, install as service
+sudo ./install.sh
+
+# The install script will:
+# 1. Copy files to /opt/netscan
+# 2. Create virtual environment
+# 3. Install dependencies
+# 4. Set up systemd service
+# 5. Start and enable the service
+
+# Check service status
+sudo systemctl status netscan
+
+# View service logs
+sudo journalctl -u netscan -f
+```
+
+The service will start automatically on boot and restart if it crashes.
+
+### Development Installation
+
+For development and testing purposes:
+
+```bash
+# Clone the repository
+git clone https://github.com/nobrega8/netscan.git
+cd netscan
+
+# Create virtual environment (recommended even for development)
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set up authentication
+export SECRET_KEY="your-secret-key-here"
+export FLASK_APP=app.py
+
+# Initialize database
+flask db upgrade
+
+# Run in development mode
+python3 app.py
+```
+
+For development, you can also install dependencies system-wide if you prefer (though not recommended on modern Debian systems):
+
+```bash
+# Alternative for development only (may cause PEP 668 errors on Raspberry Pi)
+pip3 install -r requirements.txt
+```
 
 ## Configuration
 
@@ -104,24 +178,27 @@ SCAN_INTERVAL_MINUTES=30
 NETWORK_RANGE=auto
 ```
 
-### Raspberry Pi Service Installation
+### Service Management
+
+After installing NetScan as a service (see Service Installation section above), use these commands:
 
 ```bash
-# Install as system service
-sudo ./install.sh
-
-# Initialize/upgrade database
-export FLASK_APP=app.py
-flask db upgrade
-
-# Start the service
-sudo systemctl start netscan
-
-# Enable auto-start on boot
-sudo systemctl enable netscan
-
-# Check status
+# Check service status
 sudo systemctl status netscan
+
+# Start/stop the service
+sudo systemctl start netscan
+sudo systemctl stop netscan
+
+# Enable/disable auto-start on boot
+sudo systemctl enable netscan
+sudo systemctl disable netscan
+
+# View service logs
+sudo journalctl -u netscan -f
+
+# Restart the service
+sudo systemctl restart netscan
 ```
 
 ### Updating an Existing Installation
@@ -147,6 +224,9 @@ The deployment script will:
 ```bash
 # Pull latest changes
 git pull --ff-only origin main
+
+# Activate virtual environment (if using venv)
+source venv/bin/activate
 
 # Install/update dependencies
 pip install -r requirements.txt
@@ -236,6 +316,8 @@ If the service is not accessible:
    ```bash
    rm instance/netscan.db
    export FLASK_APP=app.py
+   # Use venv if installed as service
+   source venv/bin/activate  # for manual installations
    flask db upgrade
    ```
 
@@ -255,6 +337,12 @@ If the service is not accessible:
 
 3. **Dependency issues**: Reinstall requirements
    ```bash
+   # For service installations
+   source /opt/netscan/venv/bin/activate
+   pip install -r requirements.txt --force-reinstall
+   
+   # For manual installations
+   source venv/bin/activate
    pip install -r requirements.txt --force-reinstall
    ```
 
