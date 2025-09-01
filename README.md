@@ -2,6 +2,72 @@
 
 A Python network device scanner with web interface for Raspberry Pi.
 
+## Quick Start Guide
+
+For users who want to get NetScan running immediately:
+
+### Option 1: Automated Installation (Recommended)
+```bash
+# Clone and install with a single script
+git clone https://github.com/nobrega8/netscan.git
+cd netscan
+sudo ./install.sh
+```
+
+### Option 2: Docker (Easiest)
+```bash
+# Clone and start with Docker
+git clone https://github.com/nobrega8/netscan.git
+cd netscan
+cp .env.docker.example .env
+docker compose up -d
+```
+
+### Option 3: Manual Installation
+```bash
+# Install prerequisites
+sudo apt update && sudo apt -y install python3-venv python3-dev build-essential nmap
+
+# Clone and setup
+git clone https://github.com/nobrega8/netscan.git
+cd netscan
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+export FLASK_APP=app.py
+flask db upgrade
+python3 app.py
+```
+
+**Access**: Open http://localhost:2530 in your browser
+**Default Login**: admin / admin123 (you'll be prompted to change this)
+
+### Verification
+
+After installation, verify everything is working:
+
+1. **Check service status** (if using systemd installation):
+   ```bash
+   sudo systemctl status netscan
+   ```
+
+2. **Test web interface**: Visit http://localhost:2530 and log in
+
+3. **Verify dependencies**:
+   ```bash
+   # Check nmap is installed
+   nmap --version
+   
+   # Check Python virtual environment (if using manual installation)
+   source venv/bin/activate
+   python -c "import flask, nmap; print('Dependencies OK')"
+   ```
+
+4. **Test basic scan**: After logging in, click "Scan Now" to test network discovery
+
+---
+
 ## Features
 
 - **Network Device Scanning**: Automatically discovers devices on your network
@@ -49,8 +115,8 @@ Before installing NetScan, ensure your system has the required dependencies:
 # Update package list
 sudo apt update
 
-# Install required system packages
-sudo apt -y install python3-venv nmap
+# Install required system packages (including build tools for Python packages)
+sudo apt -y install python3-venv python3-dev build-essential nmap
 
 # Optional: Enable SYN scans without sudo (recommended for better performance)
 sudo apt -y install libcap2-bin
@@ -64,6 +130,8 @@ sudo update-locale LANG=en_GB.UTF-8 LC_CTYPE=en_GB.UTF-8
 #### About the Dependencies
 
 - **python3-venv**: Required to create virtual environments (PEP 668 compliance on modern Debian/Ubuntu)
+- **python3-dev**: Development headers for Python (required to compile some packages)
+- **build-essential**: C/C++ compilers and build tools (required for packages like netifaces and psutil)
 - **nmap**: Network mapping tool used for device discovery and port scanning
 - **libcap2-bin**: Allows nmap to run SYN scans without root privileges (optional but recommended)
 - **locales**: Prevents locale-related warnings during installation
@@ -170,6 +238,10 @@ For development and testing purposes:
 git clone https://github.com/nobrega8/netscan.git
 cd netscan
 
+# Install system dependencies first (important!)
+sudo apt update
+sudo apt -y install python3-venv python3-dev build-essential nmap
+
 # Create virtual environment (recommended even for development)
 python3 -m venv venv
 source venv/bin/activate
@@ -177,6 +249,10 @@ source venv/bin/activate
 # Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
+
+# Create environment configuration (optional but recommended)
+cp .env.example .env
+# Edit .env file to customize settings if needed
 
 # Set up authentication (optional for development)
 export SECRET_KEY="development-secret-key"
@@ -460,24 +536,34 @@ For production deployments, database migrations ensure safe schema evolution wit
    sudo apt -y install nmap
    ```
 
-2. **PEP 668 / "externally-managed-environment" errors**: Use virtual environment
+2. **Python package compilation errors** (netifaces, psutil): Install build tools
+   ```bash
+   sudo apt -y install python3-dev build-essential
+   ```
+
+3. **PEP 668 / "externally-managed-environment" errors**: Use virtual environment
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
    ```
 
-3. **Locale warnings**: Configure system locale
+4. **Locale warnings**: Configure system locale
    ```bash
    sudo apt -y install locales
    sudo update-locale LANG=en_GB.UTF-8 LC_CTYPE=en_GB.UTF-8
    # Reboot or logout/login for changes to take effect
    ```
 
-4. **Slow network scans**: Enable SYN scans without sudo
+5. **Slow network scans**: Enable SYN scans without sudo
    ```bash
    sudo apt -y install libcap2-bin
    sudo setcap cap_net_raw,cap_net_admin+eip "$(command -v nmap)"
+   ```
+
+6. **Network timeout errors during pip install**: Try installing with timeout and retries
+   ```bash
+   pip install --timeout 300 --retries 3 -r requirements.txt
    ```
 
 #### Flask-Limiter Warnings

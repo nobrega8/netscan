@@ -153,7 +153,6 @@ async function startEnhancedScan() {
         button.innerHTML = originalContent;
     }
 }
-}
 
 function monitorScanProgress(taskId, button, originalContent) {
     const progressInterval = setInterval(() => {
@@ -449,14 +448,6 @@ document.addEventListener('DOMContentLoaded', function() {
 window.addEventListener('beforeunload', function() {
     stopAutoRefresh();
 });
-        
-        const lastSeenCell = row.querySelector('.last-seen');
-        if (lastSeenCell && device.last_seen) {
-            const date = new Date(device.last_seen);
-            lastSeenCell.textContent = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-        }
-    });
-}
 
 // Device selection for merging
 let selectedDevices = new Set();

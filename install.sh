@@ -44,9 +44,9 @@ sudo chown -R "$RUN_USER:$RUN_GROUP" "$APP_DIR"
 if ! sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
   echo "Installing system dependencies..."
   sudo apt update
-  sudo apt -y install python3-venv nmap
+  sudo apt -y install python3-venv python3-dev build-essential nmap
 else
-  echo "APT is busy; install manually when free: sudo apt -y install python3-venv nmap"
+  echo "APT is busy; install manually when free: sudo apt -y install python3-venv python3-dev build-essential nmap"
 fi
 
 # 3) Generate SECRET_KEY if not provided

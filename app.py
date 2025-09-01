@@ -905,13 +905,15 @@ def new_person():
                 email=email if email else None
             )
             
+            # Add person to session first (needed for ID generation if file upload)
+            db.session.add(person)
+            
             # Handle profile photo upload
             if 'profile_photo' in request.files:
                 file = request.files['profile_photo']
                 if file and file.filename:
                     if allowed_file(file.filename):
-                        db.session.add(person)  # Add first to get the ID
-                        db.session.flush()  # Flush to get the ID without committing
+                        db.session.flush()  # Flush to get the ID for file naming
                         
                         filename = secure_filename(f"person_{person.id}_{file.filename}")
                         upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
@@ -926,7 +928,6 @@ def new_person():
                         flash('Invalid file type. Please upload PNG or JPG images only.', 'error')
                         return render_template('new_person.html'), 422
             
-            db.session.add(person)
             db.session.commit()
             flash(f'Person "{name}" added successfully.', 'success')
             return redirect(url_for('people'))
@@ -1291,14 +1292,23 @@ def speed_test_full():
 def api_scan_start():
     """Start network scan with progress tracking"""
     try:
-        # Validate content-type
+        # Validate content-type - be more flexible for scan requests
         if not request.is_json and request.content_type != 'application/json':
-            # Allow empty requests for backwards compatibility
+            # Allow empty requests or check if we can parse as JSON anyway
             if request.content_length and request.content_length > 0:
-                return jsonify({
-                    'success': False,
-                    'error': 'Content-Type must be application/json'
-                }), 415
+                # Try to get data anyway - might be JSON without proper content-type
+                try:
+                    test_data = request.get_json(force=True)
+                    if test_data is None:
+                        return jsonify({
+                            'success': False,
+                            'error': 'Content-Type must be application/json or request must be empty'
+                        }), 415
+                except:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Content-Type must be application/json for non-empty requests'
+                    }), 415
         
         # Get JSON data with error handling
         try:
@@ -1342,6 +1352,8 @@ def api_scan_start():
             'network_range': network_range or 'auto-detected'
         })
     except ImportError as e:
+        # Log the specific import error for debugging
+        print(f"Import error in scan API: {e}")
         return jsonify({
             'success': False,
             'error': 'Scan functionality not available. Please check server configuration.'
