@@ -50,8 +50,12 @@ class NetScanService:
             id='network_scan'
         )
         
-        # Run initial scan
-        threading.Thread(target=self.scan_job, daemon=True).start()
+        # Run initial scan only if not disabled
+        if not Config.DISABLE_STARTUP_SCAN:
+            print("Running initial startup scan...")
+            threading.Thread(target=self.scan_job, daemon=True).start()
+        else:
+            print("Startup scan disabled (NETSCAN_DISABLE_STARTUP_SCAN=true)")
         
         # Start scheduler
         self.scheduler.start()

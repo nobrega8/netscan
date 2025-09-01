@@ -747,8 +747,16 @@ def get_update_status():
 @app.route('/update_oui', methods=['POST'])
 @admin_required_local
 def update_oui():
+    """Update OUI database from IEEE registry"""
     try:
         import requests
+        
+        # Validate request method
+        if request.method != 'POST':
+            return jsonify({
+                'success': False, 
+                'error': 'Method not allowed. Use POST request.'
+            }), 405
         
         # Try multiple OUI database sources
         oui_sources = [
@@ -762,10 +770,12 @@ def update_oui():
         
         for source in oui_sources:
             try:
+                print(f"Trying to fetch OUI data from: {source}")
                 response = requests.get(source, timeout=30)
                 response.raise_for_status()
                 oui_data = response.text
                 source_used = source
+                print(f"Successfully fetched OUI data from: {source}")
                 break
             except Exception as e:
                 print(f"Failed to get OUI data from {source}: {e}")
@@ -778,9 +788,13 @@ def update_oui():
                 count = populate_oui_database()
                 return jsonify({'success': True, 'count': count, 'source': 'local_database'})
             except Exception as fallback_error:
-                return jsonify({'success': False, 'error': f'Could not fetch OUI data from any source and local fallback failed: {str(fallback_error)}'})
+                return jsonify({
+                    'success': False, 
+                    'error': f'Could not fetch OUI data from any source and local fallback failed: {str(fallback_error)}'
+                }), 500
         
         # Clear existing OUI data and insert new data in batches
+        print("Clearing existing OUI data...")
         OUI.query.delete()
         
         # Parse and insert new data in batches to avoid database locking
@@ -788,6 +802,7 @@ def update_oui():
         batch_size = 1000
         oui_batch = []
         
+        print("Parsing OUI data...")
         if 'wireshark' in source_used:
             # Parse Wireshark manuf format: AA:BB:CC\tManufacturer\tLong name
             for line in oui_data.split('\n'):
@@ -832,11 +847,22 @@ def update_oui():
             db.session.bulk_insert_mappings(OUI, oui_batch)
         
         db.session.commit()
-        return jsonify({'success': True, 'count': count, 'source': source_used})
+        print(f"OUI database updated successfully with {count} entries from {source_used}")
+        
+        return jsonify({
+            'success': True, 
+            'count': count, 
+            'source': source_used,
+            'message': f'OUI database updated with {count} entries'
+        })
         
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)})
+        print(f"Error updating OUI database: {e}")
+        return jsonify({
+            'success': False, 
+            'error': f'Failed to update OUI database: {str(e)}'
+        }), 500
 
 @app.route('/person/<int:person_id>')
 @login_required
@@ -1235,33 +1261,42 @@ def speed_test_full():
 # Enhanced API endpoints for improved UI/UX
 @app.route('/api/scan/start', methods=['POST'])
 @login_required
+@editor_required
 def api_scan_start():
     """Start network scan with progress tracking"""
     try:
-        from tasks import start_network_scan
+        from tasks import start_network_scan, task_manager
         
-        # Get network range from request if provided
+        # Check if a scan is already running
+        active_tasks = task_manager.get_all_tasks()
+        for task in active_tasks.values():
+            if (task.name in ['Network Scan'] and 
+                task.status.value in ['pending', 'running']):
+                return jsonify({
+                    'success': False,
+                    'error': 'A network scan is already in progress. Please wait for it to complete.',
+                    'status': 'scan_in_progress'
+                }), 409
+        
+        # Get network range from request if provided, otherwise auto-detect
         data = request.get_json() or {}
         network_range = data.get('network_range') or data.get('network')
         
-        if not network_range:
-            return jsonify({
-                'success': False,
-                'error': 'Network range is required. Please specify network_range or network parameter.'
-            }), 400
-        
-        # Start async scan
+        # Start async scan (network_range can be None for auto-detection)
         task_id = start_network_scan(network_range)
         
         return jsonify({
             'success': True,
             'task_id': task_id,
-            'message': 'Network scan started'
+            'message': 'Network scan started successfully',
+            'network_range': network_range or 'auto-detected'
         })
     except Exception as e:
+        # Log the error for debugging
+        print(f"Error starting scan: {e}")
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f'Failed to start network scan: {str(e)}'
         }), 500
 
 @app.route('/api/scan/progress/<task_id>')
