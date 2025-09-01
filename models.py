@@ -87,72 +87,116 @@ class Device(db.Model):
         """Convert Device object to dictionary for JSON serialization"""
         import json
         
-        # Parse JSON strings safely
-        open_ports = []
-        services = []
-        merged_devices = []
-        
         try:
-            if self.open_ports:
-                open_ports = json.loads(self.open_ports)
-        except (json.JSONDecodeError, TypeError):
+            # Parse JSON strings safely
             open_ports = []
-            
-        try:
-            if self.services:
-                services = json.loads(self.services)
-        except (json.JSONDecodeError, TypeError):
             services = []
-            
-        try:
-            if self.merged_devices:
-                merged_devices = json.loads(self.merged_devices)
-        except (json.JSONDecodeError, TypeError):
             merged_devices = []
-        
-        # Handle owner relationship - get the person data separately to avoid relationship issues
-        owner = None
-        if self.person_id:
+            
             try:
-                # Get person by ID to avoid SQLAlchemy relationship loading issues
-                person = db.session.get(Person, self.person_id)
-                if person:
-                    owner = {
-                        'id': person.id,
-                        'name': person.name,
-                        'email': person.email
-                    }
-            except Exception:
-                # If there's any issue with loading the owner, just skip it
-                owner = None
-        
-        return {
-            'id': self.id,
-            'hostname': self.hostname or '',
-            'ip_address': self.ip_address or '',
-            'mac_address': self.mac_address or '',
-            'brand': self.brand or '',
-            'model': self.model or '',
-            'icon': self.icon or 'device',
-            'image_path': self.image_path or '',
-            'is_online': bool(self.is_online),
-            'last_seen': self.last_seen.isoformat() if self.last_seen else None,
-            'first_seen': self.first_seen.isoformat() if self.first_seen else None,
-            'open_ports': open_ports,
-            'person_id': self.person_id,
-            'merged_devices': merged_devices,
-            'os_info': self.os_info or '',
-            'vendor': self.vendor or '',
-            'device_type': self.device_type or '',
-            'os_family': self.os_family or '',
-            'netbios_name': self.netbios_name or '',
-            'workgroup': self.workgroup or '',
-            'services': services,
-            'category': self.category or '',
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'owner': owner
-        }
+                if self.open_ports:
+                    open_ports = json.loads(self.open_ports)
+            except (json.JSONDecodeError, TypeError):
+                open_ports = []
+                
+            try:
+                if self.services:
+                    services = json.loads(self.services)
+            except (json.JSONDecodeError, TypeError):
+                services = []
+                
+            try:
+                if self.merged_devices:
+                    merged_devices = json.loads(self.merged_devices)
+            except (json.JSONDecodeError, TypeError):
+                merged_devices = []
+            
+            # Handle owner relationship - get the person data separately to avoid relationship issues
+            owner = None
+            if self.person_id:
+                try:
+                    # Get person by ID to avoid SQLAlchemy relationship loading issues
+                    from models import Person  # Import here to avoid circular imports
+                    person = db.session.get(Person, self.person_id)
+                    if person:
+                        owner = {
+                            'id': person.id,
+                            'name': str(person.name) if person.name else '',
+                            'email': str(person.email) if person.email else ''
+                        }
+                except Exception as e:
+                    print(f"Error loading owner for device {self.id}: {e}")
+                    # If there's any issue with loading the owner, just skip it
+                    owner = None
+            
+            result = {
+                'id': int(self.id) if self.id is not None else 0,
+                'hostname': str(self.hostname) if self.hostname else '',
+                'ip_address': str(self.ip_address) if self.ip_address else '',
+                'mac_address': str(self.mac_address) if self.mac_address else '',
+                'brand': str(self.brand) if self.brand else '',
+                'model': str(self.model) if self.model else '',
+                'icon': str(self.icon) if self.icon else 'device',
+                'image_path': str(self.image_path) if self.image_path else '',
+                'is_online': bool(self.is_online),
+                'last_seen': self.last_seen.isoformat() if self.last_seen else None,
+                'first_seen': self.first_seen.isoformat() if self.first_seen else None,
+                'open_ports': open_ports,
+                'person_id': int(self.person_id) if self.person_id is not None else None,
+                'merged_devices': merged_devices,
+                'os_info': str(self.os_info) if self.os_info else '',
+                'vendor': str(self.vendor) if self.vendor else '',
+                'device_type': str(self.device_type) if self.device_type else '',
+                'os_family': str(self.os_family) if self.os_family else '',
+                'netbios_name': str(self.netbios_name) if self.netbios_name else '',
+                'workgroup': str(self.workgroup) if self.workgroup else '',
+                'services': services,
+                'category': str(self.category) if self.category else '',
+                'created_at': self.created_at.isoformat() if self.created_at else None,
+                'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+                'owner': owner
+            }
+            
+            # Verify the result can be JSON serialized
+            try:
+                json.dumps(result)
+            except Exception as e:
+                print(f"JSON serialization failed for device {self.id}: {e}")
+                # Return a minimal safe version
+                return {
+                    'id': int(self.id) if self.id is not None else 0,
+                    'hostname': str(self.hostname) if self.hostname else 'Unknown',
+                    'ip_address': str(self.ip_address) if self.ip_address else '',
+                    'mac_address': str(self.mac_address) if self.mac_address else '',
+                    'is_online': bool(self.is_online),
+                    'last_seen': self.last_seen.isoformat() if self.last_seen else None,
+                    'first_seen': self.first_seen.isoformat() if self.first_seen else None,
+                    'open_ports': [],
+                    'person_id': None,
+                    'merged_devices': [],
+                    'owner': None
+                }
+            
+            return result
+            
+        except Exception as e:
+            print(f"Unexpected error in to_dict for device {self.id if hasattr(self, 'id') else 'unknown'}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Return absolute minimal data
+            return {
+                'id': 0,
+                'hostname': 'Error',
+                'ip_address': '',
+                'mac_address': '',
+                'is_online': False,
+                'last_seen': None,
+                'first_seen': None,
+                'open_ports': [],
+                'person_id': None,
+                'merged_devices': [],
+                'owner': None
+            }
 
 class Person(db.Model):
     id = db.Column(db.Integer, primary_key=True)

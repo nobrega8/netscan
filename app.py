@@ -272,20 +272,42 @@ def dashboard():
 def devices():
     try:
         devices = Device.query.order_by(Device.last_seen.desc()).all()
+        print(f"Found {len(devices)} devices")
+        
         # Convert devices to dict for JSON serialization in template
         devices_dict = []
-        for device in devices:
+        for i, device in enumerate(devices):
             try:
                 device_data = device.to_dict()
+                # Verify it's actually a dict
+                if not isinstance(device_data, dict):
+                    print(f"Device {device.id} to_dict() returned {type(device_data)}, skipping")
+                    continue
                 devices_dict.append(device_data)
             except Exception as e:
-                print(f"Error converting device {device.id} to dict: {e}")
+                print(f"Error converting device {device.id if hasattr(device, 'id') else i} to dict: {e}")
+                import traceback
+                traceback.print_exc()
                 # Skip problematic devices rather than crashing
                 continue
+        
+        print(f"Successfully converted {len(devices_dict)} devices to dicts")
+        
+        # Test JSON serialization before passing to template
+        try:
+            import json
+            json.dumps(devices_dict)
+            print("JSON serialization test passed")
+        except Exception as e:
+            print(f"JSON serialization test failed: {e}")
+            # If JSON serialization fails, return empty list
+            return render_template('devices.html', devices=[])
         
         return render_template('devices.html', devices=devices_dict)
     except Exception as e:
         print(f"Error in devices route: {e}")
+        import traceback
+        traceback.print_exc()
         # Return empty devices list in case of error
         return render_template('devices.html', devices=[])
 
