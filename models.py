@@ -34,7 +34,7 @@ class User(UserMixin, db.Model):
     def has_role(self, role):
         """Check if user has specific role"""
         if isinstance(role, str):
-            role = UserRole(role)
+            role = UserRole(role.upper())  # Ensure role is uppercase
         return self.role == role
     
     def can_edit(self):

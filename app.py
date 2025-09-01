@@ -43,6 +43,34 @@ app.config['UPLOAD_FOLDER'] = 'static/uploads'
 db.init_app(app)
 migrate = Migrate(app, db)
 
+# Configure SQLite WAL mode on each connection
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Set SQLite pragmas on each connection"""
+    if 'sqlite' in str(dbapi_connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000") 
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
+
+def setup_database():
+    """Configure SQLite for optimal concurrent access"""
+    try:
+        # The pragma settings are now handled by the connection event above
+        print("SQLite configured with WAL mode and busy timeout via connection events")
+    except Exception as e:
+        print(f"Warning: Could not configure SQLite WAL mode: {e}")
+
+# Ensure database session cleanup to prevent locking
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    """Remove database session to prevent connection leaks"""
+    db.session.remove()
+
 # Setup Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -203,7 +231,7 @@ def create_default_admin():
             
             admin = User(
                 username=admin_username,
-                role=UserRole.ADMIN,
+                role=UserRole.ADMIN,  # Explicitly set role to enum value
                 must_change_password=True
             )
             admin.set_password(admin_password)
@@ -214,6 +242,7 @@ def create_default_admin():
             print(f"Created default admin user: {admin_username}")
             print("IMPORTANT: Change the default password immediately!")
     except Exception as e:
+        db.session.rollback()
         print(f"Error creating default admin: {e}")
 
 @app.route('/')
@@ -751,11 +780,13 @@ def update_oui():
             except Exception as fallback_error:
                 return jsonify({'success': False, 'error': f'Could not fetch OUI data from any source and local fallback failed: {str(fallback_error)}'})
         
-        # Clear existing OUI data
+        # Clear existing OUI data and insert new data in batches
         OUI.query.delete()
         
-        # Parse and insert new data
+        # Parse and insert new data in batches to avoid database locking
         count = 0
+        batch_size = 1000
+        oui_batch = []
         
         if 'wireshark' in source_used:
             # Parse Wireshark manuf format: AA:BB:CC\tManufacturer\tLong name
@@ -768,9 +799,14 @@ def update_oui():
                         manufacturer = parts[1].strip()
                         
                         if len(mac_prefix) == 6 and all(c in '0123456789ABCDEFabcdef' for c in mac_prefix):
-                            oui = OUI(prefix=mac_prefix.upper(), manufacturer=manufacturer)
-                            db.session.add(oui)
+                            oui_batch.append({'prefix': mac_prefix.upper(), 'manufacturer': manufacturer})
                             count += 1
+                            
+                            # Insert in batches
+                            if len(oui_batch) >= batch_size:
+                                db.session.bulk_insert_mappings(OUI, oui_batch)
+                                db.session.commit()
+                                oui_batch = []
         else:
             # Parse IEEE format: AA-BB-CC (hex)\tManufacturer
             for line in oui_data.split('\n'):
@@ -782,9 +818,18 @@ def update_oui():
                         manufacturer = parts[1].strip()
                         
                         if len(prefix) == 6 and all(c in '0123456789ABCDEFabcdef' for c in prefix):
-                            oui = OUI(prefix=prefix.upper(), manufacturer=manufacturer)
-                            db.session.add(oui)
+                            oui_batch.append({'prefix': prefix.upper(), 'manufacturer': manufacturer})
                             count += 1
+                            
+                            # Insert in batches
+                            if len(oui_batch) >= batch_size:
+                                db.session.bulk_insert_mappings(OUI, oui_batch)
+                                db.session.commit()
+                                oui_batch = []
+        
+        # Insert remaining items
+        if oui_batch:
+            db.session.bulk_insert_mappings(OUI, oui_batch)
         
         db.session.commit()
         return jsonify({'success': True, 'count': count, 'source': source_used})
@@ -1197,7 +1242,13 @@ def api_scan_start():
         
         # Get network range from request if provided
         data = request.get_json() or {}
-        network_range = data.get('network_range')
+        network_range = data.get('network_range') or data.get('network')
+        
+        if not network_range:
+            return jsonify({
+                'success': False,
+                'error': 'Network range is required. Please specify network_range or network parameter.'
+            }), 400
         
         # Start async scan
         task_id = start_network_scan(network_range)
@@ -1211,7 +1262,7 @@ def api_scan_start():
         return jsonify({
             'success': False,
             'error': str(e)
-        })
+        }), 500
 
 @app.route('/api/scan/progress/<task_id>')
 @login_required 
@@ -1614,6 +1665,9 @@ def initialize_app():
     """Initialize the application with database and default admin user"""
     with app.app_context():
         try:
+            # Configure SQLite WAL mode first
+            setup_database()
+            
             # Ensure database tables exist
             db.create_all()
             # Create default admin user
