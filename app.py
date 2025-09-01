@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, Response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, Response, flash
 from flask_migrate import Migrate
 from flask_login import LoginManager, login_required, current_user
 from flask_wtf.csrf import CSRFProtect
@@ -891,32 +891,50 @@ def person_detail(person_id):
 @editor_required
 def new_person():
     if request.method == 'POST':
-        person = Person(
-            name=request.form.get('name'),
-            email=request.form.get('email')
-        )
+        # Validate required fields
+        name = request.form.get('name', '').strip()
+        if not name:
+            flash('Name is required.', 'error')
+            return render_template('new_person.html'), 422
         
-        # Handle profile photo upload
-        if 'profile_photo' in request.files:
-            file = request.files['profile_photo']
-            if file and file.filename:
-                if allowed_file(file.filename):
-                    db.session.add(person)  # Add first to get the ID
-                    db.session.flush()  # Flush to get the ID without committing
-                    
-                    filename = secure_filename(f"person_{person.id}_{file.filename}")
-                    upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
-                    
-                    # Create upload directory if it doesn't exist
-                    os.makedirs(os.path.dirname(upload_path), exist_ok=True)
-                    
-                    # Resize and save image uniformly
-                    resize_and_save_image(file, upload_path)
-                    person.image_path = filename
+        email = request.form.get('email', '').strip()
         
-        db.session.add(person)
-        db.session.commit()
-        return redirect(url_for('people'))
+        try:
+            person = Person(
+                name=name,
+                email=email if email else None
+            )
+            
+            # Handle profile photo upload
+            if 'profile_photo' in request.files:
+                file = request.files['profile_photo']
+                if file and file.filename:
+                    if allowed_file(file.filename):
+                        db.session.add(person)  # Add first to get the ID
+                        db.session.flush()  # Flush to get the ID without committing
+                        
+                        filename = secure_filename(f"person_{person.id}_{file.filename}")
+                        upload_path = os.path.join(app.config.get('UPLOAD_FOLDER', 'static/uploads'), filename)
+                        
+                        # Create upload directory if it doesn't exist
+                        os.makedirs(os.path.dirname(upload_path), exist_ok=True)
+                        
+                        # Resize and save image uniformly
+                        resize_and_save_image(file, upload_path)
+                        person.image_path = filename
+                    else:
+                        flash('Invalid file type. Please upload PNG or JPG images only.', 'error')
+                        return render_template('new_person.html'), 422
+            
+            db.session.add(person)
+            db.session.commit()
+            flash(f'Person "{name}" added successfully.', 'success')
+            return redirect(url_for('people'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error adding person: {str(e)}', 'error')
+            return render_template('new_person.html'), 422
     
     return render_template('new_person.html')
 
@@ -1273,6 +1291,24 @@ def speed_test_full():
 def api_scan_start():
     """Start network scan with progress tracking"""
     try:
+        # Validate content-type
+        if not request.is_json and request.content_type != 'application/json':
+            # Allow empty requests for backwards compatibility
+            if request.content_length and request.content_length > 0:
+                return jsonify({
+                    'success': False,
+                    'error': 'Content-Type must be application/json'
+                }), 415
+        
+        # Get JSON data with error handling
+        try:
+            data = request.get_json(force=True) or {}
+        except Exception as json_error:
+            return jsonify({
+                'success': False,
+                'error': f'Invalid JSON: {str(json_error)}'
+            }), 422
+        
         from tasks import start_network_scan, task_manager
         
         # Check if a scan is already running
@@ -1287,8 +1323,14 @@ def api_scan_start():
                 }), 409
         
         # Get network range from request if provided, otherwise auto-detect
-        data = request.get_json() or {}
         network_range = data.get('network_range') or data.get('network')
+        
+        # Validate network range if provided
+        if network_range and not isinstance(network_range, str):
+            return jsonify({
+                'success': False,
+                'error': 'network_range must be a string'
+            }), 422
         
         # Start async scan (network_range can be None for auto-detection)
         task_id = start_network_scan(network_range)
@@ -1299,12 +1341,19 @@ def api_scan_start():
             'message': 'Network scan started successfully',
             'network_range': network_range or 'auto-detected'
         })
-    except Exception as e:
-        # Log the error for debugging
-        print(f"Error starting scan: {e}")
+    except ImportError as e:
         return jsonify({
             'success': False,
-            'error': f'Failed to start network scan: {str(e)}'
+            'error': 'Scan functionality not available. Please check server configuration.'
+        }), 503
+    except Exception as e:
+        # Log the error for debugging
+        import traceback
+        print(f"Error starting scan: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error occurred while starting scan'
         }), 500
 
 @app.route('/api/scan/progress/<task_id>')
