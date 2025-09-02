@@ -18,7 +18,7 @@ import threading
 import tempfile
 import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 try:
     from PIL import Image, ImageOps
     PILLOW_AVAILABLE = True
@@ -98,7 +98,7 @@ limiter.init_app(app)
 # User loader for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 # Register blueprints
 app.register_blueprint(auth_bp)
@@ -729,7 +729,7 @@ def update_settings():
             setting = Settings.query.filter_by(key=key).first()
             if setting:
                 setting.value = value
-                setting.updated_at = datetime.utcnow()
+                setting.updated_at = datetime.now(UTC)
             else:
                 setting = Settings(key=key, value=value)
                 db.session.add(setting)
@@ -768,7 +768,7 @@ def update_system():
         status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
         with open(status_file, 'w') as f:
             json.dump({
-                "last_update": datetime.utcnow().isoformat(),
+                "last_update": datetime.now(UTC).isoformat(),
                 "status": "running",
                 "message": "Update process started"
             }, f)
@@ -787,7 +787,7 @@ def update_system():
             # Write error status
             with open(status_file, 'w') as f:
                 json.dump({
-                    "last_update": datetime.utcnow().isoformat(),
+                    "last_update": datetime.now(UTC).isoformat(),
                     "status": "error",
                     "message": f"Update failed: {result.stderr}",
                     "log": result.stdout + result.stderr
@@ -807,7 +807,7 @@ def update_system():
             status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
             with open(status_file, 'w') as f:
                 json.dump({
-                    "last_update": datetime.utcnow().isoformat(),
+                    "last_update": datetime.now(UTC).isoformat(),
                     "status": "error",
                     "message": f"Update failed: {str(e)}"
                 }, f)
@@ -822,7 +822,7 @@ def get_update_status():
     """Get the current update status"""
     import os
     import json
-    from datetime import datetime
+    from datetime import datetime, UTC
     
     try:
         status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
@@ -1135,14 +1135,14 @@ def merge_devices():
     device_ids_to_merge = data.get('device_ids', [])
     
     try:
-        primary_device = Device.query.get(primary_device_id)
+        primary_device = db.session.get(Device, primary_device_id)
         if not primary_device:
             return jsonify({'success': False, 'error': 'Primary device not found'})
         
         merged_macs = json.loads(primary_device.merged_devices or '[]')
         
         for device_id in device_ids_to_merge:
-            device_to_merge = Device.query.get(device_id)
+            device_to_merge = db.session.get(Device, device_id)
             if device_to_merge and device_to_merge.id != primary_device.id:
                 # Add MAC to merged list
                 merged_macs.append(device_to_merge.mac_address)
@@ -1798,12 +1798,12 @@ def api_recent_changes():
     """Get recent device changes"""
     try:
         # Get devices that changed in the last 24 hours
-        since = datetime.utcnow() - timedelta(hours=24)
+        since = datetime.now(UTC) - timedelta(hours=24)
         recent_scans = Scan.query.filter(Scan.timestamp >= since).order_by(Scan.timestamp.desc()).limit(10).all()
         
         changes = []
         for scan in recent_scans:
-            device = Device.query.get(scan.device_id)
+            device = db.session.get(Device, scan.device_id)
             if device:
                 changes.append({
                     'timestamp': scan.timestamp.isoformat(),
@@ -1818,7 +1818,7 @@ def api_recent_changes():
         
         if not changes:
             changes.append({
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(UTC).isoformat(),
                 'message': 'No recent changes',
                 'type': 'info'
             })
@@ -1895,7 +1895,7 @@ def api_sse_dashboard():
                 if current_time - last_update > 30:
                     data = {
                         'type': 'heartbeat', 
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(UTC).isoformat(),
                         'active_scans': len(active_scans)
                     }
                     yield f"data: {json.dumps(data)}\n\n"
@@ -1943,7 +1943,7 @@ def api_metrics():
         
         # Recent scan metrics
         recent_scans = Scan.query.filter(
-            Scan.timestamp >= datetime.utcnow() - timedelta(hours=24)
+            Scan.timestamp >= datetime.now(UTC) - timedelta(hours=24)
         ).count()
         
         # Task metrics

@@ -5,7 +5,7 @@ from wtforms import StringField, PasswordField, BooleanField, SubmitField
 from wtforms.validators import DataRequired, Length, EqualTo
 from werkzeug.security import generate_password_hash
 from models import db, User, UserRole
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import logging
 
 auth_bp = Blueprint('auth', __name__)
@@ -53,7 +53,7 @@ def login():
         if user and not user.is_locked() and user.check_password(form.password.data):
             # Reset failed login count on successful login
             user.failed_login_count = 0
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = datetime.now(UTC)
             db.session.commit()
             
             login_user(user, remember=form.remember_me.data)
@@ -74,7 +74,7 @@ def login():
                 user.failed_login_count = (user.failed_login_count or 0) + 1
                 # Lock account after 5 failed attempts for 15 minutes
                 if user.failed_login_count >= 5:
-                    user.locked_until = datetime.utcnow() + timedelta(minutes=15)
+                    user.locked_until = datetime.now(UTC) + timedelta(minutes=15)
                     flash('Account locked due to too many failed login attempts. Try again in 15 minutes.', 'error')
                 db.session.commit()
             flash('Invalid username or password.', 'error')

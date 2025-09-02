@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, UTC
 import enum
 import json
 
@@ -49,7 +49,7 @@ class User(UserMixin, db.Model):
     def is_locked(self):
         """Check if account is locked"""
         if self.locked_until:
-            return datetime.utcnow() < self.locked_until
+            return datetime.now(UTC) < self.locked_until
         return False
     
     def __repr__(self):
@@ -183,8 +183,8 @@ class Device(db.Model):
                     'ip_address': str(getattr(self, 'ip_address', '')),
                     'mac_address': str(getattr(self, 'mac_address', '')),
                     'is_online': bool(getattr(self, 'is_online', False)),
-                    'last_seen': getattr(self, 'last_seen', datetime.utcnow()).isoformat() if getattr(self, 'last_seen', None) else None,
-                    'first_seen': getattr(self, 'first_seen', datetime.utcnow()).isoformat() if getattr(self, 'first_seen', None) else None,
+                    'last_seen': getattr(self, 'last_seen', datetime.now(UTC)).isoformat() if getattr(self, 'last_seen', None) else None,
+                    'first_seen': getattr(self, 'first_seen', datetime.now(UTC)).isoformat() if getattr(self, 'first_seen', None) else None,
                     'open_ports': [],
                     'person_id': None,
                     'merged_devices': [],
