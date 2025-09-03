@@ -17,7 +17,15 @@ class EnhancedNetworkScanner:
             self.nm = nmap.PortScanner()
         except Exception as e:
             # For migration purposes, allow scanner to be created without nmap
-            print(f"Warning: Could not initialize nmap scanner: {e}")
+            error_msg = str(e)
+            if 'nmap program was not found in path' in error_msg.lower():
+                print(f"Warning: nmap is not installed. Please install nmap for full scanning capabilities:")
+                print("  - Ubuntu/Debian: sudo apt-get install nmap")
+                print("  - CentOS/RHEL: sudo yum install nmap")
+                print("  - Alpine Linux: sudo apk add nmap")
+                print("  Falling back to basic scanning methods.")
+            else:
+                print(f"Warning: Could not initialize nmap scanner: {e}")
             self.nm = None
         
         # Enhanced scanning options (configurable based on privileges)

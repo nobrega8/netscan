@@ -239,7 +239,14 @@ class ScanTasks:
         # Run within Flask application context
         with app_module.app.app_context():
             scanner = EnhancedNetworkScanner()
-            return scanner.enhanced_scan_network(network_range, progress_callback)
+            devices_found = scanner.enhanced_scan_network(network_range, progress_callback)
+            
+            # Return result with device count for progress tracking
+            return {
+                'devices_found': len(devices_found) if devices_found else 0,
+                'devices': devices_found or [],
+                'network_range': network_range or scanner.get_network_range()
+            }
     
     @staticmethod
     def device_port_scan(device_id, progress_callback=None):
@@ -384,7 +391,7 @@ def get_scan_progress(task_id: str) -> Optional[Dict]:
     """Get scan progress"""
     task = task_manager.get_task(task_id)
     if task:
-        return {
+        result_data = {
             'id': task.id,
             'name': task.name,
             'status': task.status.value,
@@ -393,4 +400,12 @@ def get_scan_progress(task_id: str) -> Optional[Dict]:
             'result': task.result,
             'error': task.error
         }
+        
+        # Add device count if available in result
+        if task.result and isinstance(task.result, dict):
+            result_data['devices_found'] = task.result.get('devices_found', 0)
+        elif task.result and isinstance(task.result, list):
+            result_data['devices_found'] = len(task.result)
+        
+        return result_data
     return None

@@ -1869,16 +1869,30 @@ def api_sse_dashboard():
             try:
                 current_time = time.time()
                 
-                # Check for active scan tasks
+                # Check for active and completed scan tasks
                 active_scans = []
+                completed_scans = []
                 for task_id, task in task_manager.get_all_tasks().items():
-                    if task.status.value == 'running' and 'scan' in task.name.lower():
-                        active_scans.append({
-                            'task_id': task_id,
-                            'name': task.name,
-                            'progress': task.progress,
-                            'message': task.message
-                        })
+                    if 'scan' in task.name.lower():
+                        if task.status.value == 'running':
+                            active_scans.append({
+                                'task_id': task_id,
+                                'name': task.name,
+                                'progress': task.progress,
+                                'message': task.message
+                            })
+                        elif task.status.value == 'completed' and task.completed_at:
+                            # Check if this was completed recently (last 5 seconds)
+                            import time
+                            if (datetime.now(UTC) - task.completed_at).total_seconds() < 5:
+                                devices_found = 0
+                                if task.result and isinstance(task.result, dict):
+                                    devices_found = task.result.get('devices_found', 0)
+                                completed_scans.append({
+                                    'task_id': task_id,
+                                    'name': task.name,
+                                    'devices_found': devices_found
+                                })
                 
                 # Send scan progress updates
                 if active_scans:
@@ -1888,6 +1902,16 @@ def api_sse_dashboard():
                             'progress': scan['progress'],
                             'status': scan['message'],
                             'task_id': scan['task_id']
+                        }
+                        yield f"data: {json.dumps(data)}\n\n"
+                
+                # Send scan completion updates
+                if completed_scans:
+                    for scan in completed_scans:
+                        data = {
+                            'type': 'scan_complete',
+                            'task_id': scan['task_id'],
+                            'devices_found': scan['devices_found']
                         }
                         yield f"data: {json.dumps(data)}\n\n"
                 
