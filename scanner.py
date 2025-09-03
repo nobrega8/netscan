@@ -3,7 +3,7 @@ import netifaces
 import socket
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, UTC
 from models import Device, Scan, OUI, db
 from config import Config
 import re
@@ -17,7 +17,15 @@ class EnhancedNetworkScanner:
             self.nm = nmap.PortScanner()
         except Exception as e:
             # For migration purposes, allow scanner to be created without nmap
-            print(f"Warning: Could not initialize nmap scanner: {e}")
+            error_msg = str(e)
+            if 'nmap program was not found in path' in error_msg.lower():
+                print(f"Warning: nmap is not installed. Please install nmap for full scanning capabilities:")
+                print("  - Ubuntu/Debian: sudo apt-get install nmap")
+                print("  - CentOS/RHEL: sudo yum install nmap")
+                print("  - Alpine Linux: sudo apk add nmap")
+                print("  Falling back to basic scanning methods.")
+            else:
+                print(f"Warning: Could not initialize nmap scanner: {e}")
             self.nm = None
         
         # Enhanced scanning options (configurable based on privileges)
@@ -463,7 +471,7 @@ class EnhancedNetworkScanner:
             device.netbios_name = device_info.get('netbios_name') or device.netbios_name
             device.workgroup = device_info.get('workgroup') or device.workgroup
             device.is_online = True
-            device.last_seen = datetime.utcnow()
+            device.last_seen = datetime.now(UTC)
             
             # Update ports and services
             if device_info.get('open_ports'):
@@ -482,8 +490,8 @@ class EnhancedNetworkScanner:
                 netbios_name=device_info.get('netbios_name'),
                 workgroup=device_info.get('workgroup'),
                 is_online=True,
-                first_seen=datetime.utcnow(),
-                last_seen=datetime.utcnow(),
+                first_seen=datetime.now(UTC),
+                last_seen=datetime.now(UTC),
                 open_ports=json.dumps(device_info.get('open_ports', [])),
                 services=json.dumps(device_info.get('services', []))
             )
@@ -497,7 +505,7 @@ class EnhancedNetworkScanner:
             device_id=device.id,
             is_online=True,
             ip_address=device_info.get('ip_address'),
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(UTC)
         )
         db.session.add(scan)
         
@@ -508,6 +516,111 @@ class EnhancedNetworkScanner:
             db.session.rollback()
             print(f"Error updating device: {e}")
             return None
+    
+    def _scan_arp_table(self):
+        """Scan ARP table for device discovery"""
+        devices = []
+        
+        try:
+            # Try different ARP table commands
+            commands = [
+                ['arp', '-a'],
+                ['ip', 'neigh', 'show'],
+                ['cat', '/proc/net/arp']
+            ]
+            
+            for cmd in commands:
+                try:
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+                    if result.returncode == 0 and result.stdout:
+                        devices.extend(self._parse_arp_output(result.stdout, cmd[0]))
+                        break
+                except:
+                    continue
+        except Exception as e:
+            print(f"Error scanning ARP table: {e}")
+        
+        return devices
+    
+    def _parse_arp_output(self, output, command_type):
+        """Parse ARP table output"""
+        devices = []
+        
+        for line in output.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            
+            try:
+                if command_type == 'arp':
+                    # Parse "arp -a" output
+                    if '(' in line and ')' in line:
+                        ip_match = re.search(r'\(([\d.]+)\)', line)
+                        mac_match = re.search(r'([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}', line)
+                        
+                        if ip_match and mac_match:
+                            ip = ip_match.group(1)
+                            mac = mac_match.group(0).lower()
+                            
+                            device_info = self._get_enhanced_device_info(ip)
+                            if device_info:
+                                device_info['mac_address'] = mac
+                                devices.append(device_info)
+                
+                elif command_type == 'ip':
+                    # Parse "ip neigh show" output
+                    parts = line.split()
+                    if len(parts) >= 5 and 'lladdr' in parts:
+                        ip = parts[0]
+                        mac_idx = parts.index('lladdr') + 1
+                        if mac_idx < len(parts):
+                            mac = parts[mac_idx].lower()
+                            
+                            device_info = self._get_enhanced_device_info(ip)
+                            if device_info:
+                                device_info['mac_address'] = mac
+                                devices.append(device_info)
+                
+                elif command_type == 'cat':
+                    # Parse "/proc/net/arp" output
+                    parts = line.split()
+                    if len(parts) >= 4 and parts[3] != '00:00:00:00:00:00':
+                        ip = parts[0]
+                        mac = parts[3].lower()
+                        
+                        device_info = self._get_enhanced_device_info(ip)
+                        if device_info:
+                            device_info['mac_address'] = mac
+                            devices.append(device_info)
+                            
+            except Exception as e:
+                print(f"Error parsing ARP line '{line}': {e}")
+                continue
+        
+        return devices
+    
+    def _get_mac_address(self, ip):
+        """Get MAC address for IP"""
+        try:
+            # Use ping first to populate ARP table
+            subprocess.run(['ping', '-c', '1', '-W', '1', ip], 
+                         capture_output=True, timeout=3)
+            
+            # Then check ARP table
+            result = subprocess.run(['arp', '-n', ip], 
+                                  capture_output=True, text=True, timeout=3)
+            
+            if result.returncode == 0 and result.stdout:
+                # Parse ARP output
+                for line in result.stdout.split('\n'):
+                    if ip in line:
+                        mac_match = re.search(r'([0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}', line)
+                        if mac_match:
+                            return mac_match.group(0).lower()
+        except:
+            pass
+        
+        return None
 
 # Maintain backwards compatibility
 class NetworkScanner(EnhancedNetworkScanner):
@@ -645,7 +758,7 @@ class NetworkScanner(EnhancedNetworkScanner):
         from datetime import timedelta
         
         # Mark devices offline if not seen in last scan
-        cutoff_time = datetime.utcnow() - timedelta(minutes=5)
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=5)
         devices = Device.query.filter(
             Device.last_seen < cutoff_time,
             Device.is_online == True
@@ -659,7 +772,7 @@ class NetworkScanner(EnhancedNetworkScanner):
                 device_id=device.id,
                 is_online=False,
                 ip_address=device.ip_address,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(UTC)
             )
             db.session.add(scan)
         
@@ -817,7 +930,7 @@ class NetworkScanner(EnhancedNetworkScanner):
                 'os_family': platform.system(),
                 'services': json.dumps(services) if services else None,
                 'category': 'Server',  # Default category for localhost
-                'timestamp': datetime.utcnow()
+                'timestamp': datetime.now(UTC)
             }
             
             # Update device in database
@@ -947,7 +1060,7 @@ class NetworkScanner(EnhancedNetworkScanner):
                 'mac_address': mac_address,
                 'open_ports': None,  # Don't reset existing port data
                 'is_online': True,
-                'timestamp': datetime.utcnow()
+                'timestamp': datetime.now(UTC)
             }
             
         except Exception as e:
@@ -1073,7 +1186,7 @@ class NetworkScanner(EnhancedNetworkScanner):
                             'hostname': self._get_hostname(ip_address),
                             'open_ports': [],
                             'is_online': True,
-                            'timestamp': datetime.utcnow()
+                            'timestamp': datetime.now(UTC)
                         }
                         devices.append(device_info)
         
@@ -1425,7 +1538,7 @@ class NetworkScanner(EnhancedNetworkScanner):
         """Mark devices as offline if not seen in recent scan"""
         from datetime import timedelta
         
-        cutoff_time = datetime.utcnow() - timedelta(minutes=60)  # 1 hour timeout
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=60)  # 1 hour timeout
         
         devices = Device.query.filter(
             Device.last_seen < cutoff_time,
@@ -1439,7 +1552,7 @@ class NetworkScanner(EnhancedNetworkScanner):
                 device_id=device.id,
                 ip_address=device.ip_address,
                 is_online=False,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(UTC)
             )
             db.session.add(scan)
         
@@ -1539,7 +1652,7 @@ class NetworkScanner(EnhancedNetworkScanner):
                 'os_family': platform.system(),
                 'services': json.dumps(services) if services else None,
                 'category': 'Server',  # Default category for localhost
-                'timestamp': datetime.utcnow()
+                'timestamp': datetime.now(UTC)
             }
             
             # Update device in database

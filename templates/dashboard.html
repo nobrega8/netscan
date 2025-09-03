@@ -269,7 +269,8 @@ function dashboardData() {
             } else if (data.type === 'scan_complete') {
                 this.isScanning = false;
                 this.scanProgress = 100;
-                showToast(`Scan completed! Found ${data.devices_found} devices.`, 'success');
+                const deviceCount = data.devices_found || data.result?.length || 'unknown';
+                showToast(`Scan completed! Found ${deviceCount} devices.`, 'success');
             }
         }
     }

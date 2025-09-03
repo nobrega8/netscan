@@ -6,7 +6,7 @@ Provides asynchronous scanning capabilities
 import threading
 import time
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional, Callable, Dict, Any
@@ -34,7 +34,7 @@ class Task:
     
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now(UTC)
 
 class TaskManager:
     """Simple task manager for background operations"""
@@ -92,7 +92,7 @@ class TaskManager:
             with self.lock:
                 task = self.tasks[task_id]
                 task.status = TaskStatus.RUNNING
-                task.started_at = datetime.utcnow()
+                task.started_at = datetime.now(UTC)
                 task.message = "Starting task..."
             
             self._notify_progress(task_id, 0, "Starting task...")
@@ -110,7 +110,7 @@ class TaskManager:
                 task.progress = 100
                 task.message = "Task completed successfully"
                 task.result = result
-                task.completed_at = datetime.utcnow()
+                task.completed_at = datetime.now(UTC)
             
             self._notify_progress(task_id, 100, "Task completed successfully")
             
@@ -120,7 +120,7 @@ class TaskManager:
                 task.status = TaskStatus.FAILED
                 task.error = str(e)
                 task.message = f"Task failed: {str(e)}"
-                task.completed_at = datetime.utcnow()
+                task.completed_at = datetime.now(UTC)
             
             self._notify_progress(task_id, task.progress, f"Task failed: {str(e)}")
         
@@ -179,7 +179,7 @@ class TaskManager:
             if task and task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
                 task.status = TaskStatus.CANCELLED
                 task.message = "Task cancelled"
-                task.completed_at = datetime.utcnow()
+                task.completed_at = datetime.now(UTC)
                 
                 # Remove worker if it hasn't started
                 if task_id in self.workers:
@@ -193,7 +193,7 @@ class TaskManager:
     
     def cleanup_completed_tasks(self, max_age_hours: int = 24):
         """Clean up old completed tasks"""
-        cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=max_age_hours)
         
         with self.lock:
             to_remove = []
@@ -233,48 +233,64 @@ class ScanTasks:
         """Enhanced network scan task"""
         from scanner import EnhancedNetworkScanner
         
-        scanner = EnhancedNetworkScanner()
-        return scanner.enhanced_scan_network(network_range, progress_callback)
+        # Get app instance from the module where it's defined
+        import app as app_module
+        
+        # Run within Flask application context
+        with app_module.app.app_context():
+            scanner = EnhancedNetworkScanner()
+            devices_found = scanner.enhanced_scan_network(network_range, progress_callback)
+            
+            # Return result with device count for progress tracking
+            return {
+                'devices_found': len(devices_found) if devices_found else 0,
+                'devices': devices_found or [],
+                'network_range': network_range or scanner.get_network_range()
+            }
     
     @staticmethod
     def device_port_scan(device_id, progress_callback=None):
         """Port scan for specific device"""
-        from models import Device
+        from models import Device, db
         from scanner import EnhancedNetworkScanner
         
-        device = Device.query.get(device_id)
-        if not device or not device.ip_address:
-            raise ValueError("Device not found or has no IP address")
+        # Get app instance from the module where it's defined
+        import app as app_module
         
-        scanner = EnhancedNetworkScanner()
-        
-        if progress_callback:
-            progress_callback(25, f"Scanning ports for {device.hostname or device.ip_address}")
-        
-        # Enhanced port scan
-        enhanced_info = scanner._detect_services_and_os(device.ip_address)
-        
-        if progress_callback:
-            progress_callback(75, "Updating device information...")
-        
-        # Update device
-        device.open_ports = json.dumps(enhanced_info.get('open_ports', []))
-        device.services = json.dumps(enhanced_info.get('services', []))
-        device.os_info = enhanced_info.get('os_info') or device.os_info
-        device.device_type = enhanced_info.get('device_type') or device.device_type
-        device.last_seen = datetime.utcnow()
-        
-        from models import db
-        db.session.commit()
-        
-        if progress_callback:
-            progress_callback(100, "Port scan completed")
-        
-        return {
-            'device_id': device_id,
-            'open_ports': enhanced_info.get('open_ports', []),
-            'services': enhanced_info.get('services', [])
-        }
+        # Run within Flask application context
+        with app_module.app.app_context():
+            device = db.session.get(Device, device_id)
+            if not device or not device.ip_address:
+                raise ValueError("Device not found or has no IP address")
+            
+            scanner = EnhancedNetworkScanner()
+            
+            if progress_callback:
+                progress_callback(25, f"Scanning ports for {device.hostname or device.ip_address}")
+            
+            # Enhanced port scan
+            enhanced_info = scanner._detect_services_and_os(device.ip_address)
+            
+            if progress_callback:
+                progress_callback(75, "Updating device information...")
+            
+            # Update device
+            device.open_ports = json.dumps(enhanced_info.get('open_ports', []))
+            device.services = json.dumps(enhanced_info.get('services', []))
+            device.os_info = enhanced_info.get('os_info') or device.os_info
+            device.device_type = enhanced_info.get('device_type') or device.device_type
+            device.last_seen = datetime.now(UTC)
+            
+            db.session.commit()
+            
+            if progress_callback:
+                progress_callback(100, "Port scan completed")
+            
+            return {
+                'device_id': device_id,
+                'open_ports': enhanced_info.get('open_ports', []),
+                'services': enhanced_info.get('services', [])
+            }
     
     @staticmethod
     def oui_database_update(progress_callback=None):
@@ -375,7 +391,7 @@ def get_scan_progress(task_id: str) -> Optional[Dict]:
     """Get scan progress"""
     task = task_manager.get_task(task_id)
     if task:
-        return {
+        result_data = {
             'id': task.id,
             'name': task.name,
             'status': task.status.value,
@@ -384,4 +400,12 @@ def get_scan_progress(task_id: str) -> Optional[Dict]:
             'result': task.result,
             'error': task.error
         }
+        
+        # Add device count if available in result
+        if task.result and isinstance(task.result, dict):
+            result_data['devices_found'] = task.result.get('devices_found', 0)
+        elif task.result and isinstance(task.result, list):
+            result_data['devices_found'] = len(task.result)
+        
+        return result_data
     return None

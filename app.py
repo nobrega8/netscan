@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, Response, flash
 from flask_migrate import Migrate
 from flask_login import LoginManager, login_required, current_user
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.utils import secure_filename
@@ -18,7 +18,7 @@ import threading
 import tempfile
 import os
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 try:
     from PIL import Image, ImageOps
     PILLOW_AVAILABLE = True
@@ -81,6 +81,11 @@ login_manager.login_message_category = 'info'
 # Setup CSRF protection
 csrf = CSRFProtect(app)
 
+# Template context processor for CSRF token
+@app.context_processor
+def inject_csrf_token():
+    return dict(csrf_token=generate_csrf())
+
 # Setup rate limiting
 storage_uri = os.environ.get("REDIS_URL", "memory://")
 limiter = Limiter(
@@ -93,7 +98,7 @@ limiter.init_app(app)
 # User loader for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 # Register blueprints
 app.register_blueprint(auth_bp)
@@ -270,8 +275,70 @@ def dashboard():
 @app.route('/devices')
 @login_required
 def devices():
-    devices = Device.query.order_by(Device.last_seen.desc()).all()
-    return render_template('devices.html', devices=devices)
+    try:
+        devices = Device.query.order_by(Device.last_seen.desc()).all()
+        print(f"Found {len(devices)} devices")
+        
+        # Convert devices to dict for JSON serialization in template
+        devices_dict = []
+        for i, device in enumerate(devices):
+            try:
+                # Check if device is properly loaded
+                if not hasattr(device, 'id') or device.id is None:
+                    print(f"Skipping device {i} - no valid ID")
+                    continue
+                    
+                device_data = device.to_dict()
+                
+                # Verify it's actually a dict and contains required fields
+                if not isinstance(device_data, dict):
+                    print(f"Device {device.id} to_dict() returned {type(device_data)}, skipping")
+                    continue
+                    
+                # Ensure all required fields exist
+                required_fields = ['id', 'hostname', 'ip_address', 'mac_address', 'is_online']
+                if not all(field in device_data for field in required_fields):
+                    print(f"Device {device.id} missing required fields, skipping")
+                    continue
+                
+                devices_dict.append(device_data)
+                
+            except Exception as e:
+                print(f"Error converting device {getattr(device, 'id', i)} to dict: {e}")
+                import traceback
+                traceback.print_exc()
+                # Skip problematic devices rather than crashing
+                continue
+        
+        print(f"Successfully converted {len(devices_dict)} devices to dicts")
+        
+        # Test JSON serialization before passing to template
+        try:
+            import json
+            serialized = json.dumps(devices_dict)
+            print("JSON serialization test passed")
+            
+            # Test deserialization to ensure round-trip works
+            json.loads(serialized)
+            print("JSON deserialization test passed")
+            
+        except Exception as e:
+            print(f"JSON serialization test failed: {e}")
+            import traceback
+            traceback.print_exc()
+            # If JSON serialization fails, return empty list and show error
+            flash('Error loading device data. Please refresh the page.', 'error')
+            return render_template('devices.html', devices=[])
+        
+        return render_template('devices.html', devices=devices_dict)
+        
+    except Exception as e:
+        print(f"Error in devices route: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return empty devices list in case of error
+        flash('Error loading devices. Please try again.', 'error')
+        return render_template('devices.html', devices=[])
 
 @app.route('/device/<int:device_id>')
 @login_required
@@ -286,6 +353,16 @@ def edit_device(device_id):
     device = Device.query.get_or_404(device_id)
     
     if request.method == 'POST':
+        try:
+            # Validate CSRF token
+            from flask_wtf.csrf import validate_csrf
+            validate_csrf(request.form.get('csrf_token'))
+        except Exception as e:
+            print(f"CSRF validation failed: {e}")
+            flash('Security token validation failed. Please try again.', 'error')
+            people = Person.query.all()
+            return render_template('edit_device.html', device=device, people=people), 400
+            
         device.hostname = request.form.get('hostname')
         device.brand = request.form.get('brand')
         device.model = request.form.get('model')
@@ -332,8 +409,16 @@ def edit_device(device_id):
                 # Update existing OUI if the brand is different
                 existing_oui.manufacturer = device.brand
         
-        db.session.commit()
-        return redirect(url_for('device_detail', device_id=device.id))
+        try:
+            db.session.commit()
+            flash('Device updated successfully!', 'success')
+            return redirect(url_for('device_detail', device_id=device.id))
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error saving device: {e}")
+            flash(f'Error updating device: {str(e)}', 'error')
+            people = Person.query.all()
+            return render_template('edit_device.html', device=device, people=people), 500
     
     people = Person.query.all()
     return render_template('edit_device.html', device=device, people=people)
@@ -609,9 +694,29 @@ def settings():
 @editor_required
 def update_settings():
     try:
-        scan_interval = request.form.get('scan_interval')
-        network_range = request.form.get('network_range')
+        # Validate and sanitize form inputs
+        scan_interval = request.form.get('scan_interval', '').strip()
+        network_range = request.form.get('network_range', '').strip()
         dark_mode = request.form.get('dark_mode') == 'on'
+        
+        # Validate scan_interval
+        if not scan_interval:
+            flash('Scan interval is required.', 'error')
+            return redirect(url_for('settings'))
+        
+        try:
+            scan_interval_val = int(scan_interval)
+            if scan_interval_val < 1 or scan_interval_val > 1440:
+                flash('Scan interval must be between 1 and 1440 minutes.', 'error')
+                return redirect(url_for('settings'))
+        except ValueError:
+            flash('Scan interval must be a valid number.', 'error')
+            return redirect(url_for('settings'))
+        
+        # Validate network_range
+        if not network_range:
+            flash('Network range is required.', 'error')
+            return redirect(url_for('settings'))
         
         # Update settings in database
         settings_to_update = [
@@ -624,19 +729,19 @@ def update_settings():
             setting = Settings.query.filter_by(key=key).first()
             if setting:
                 setting.value = value
-                setting.updated_at = datetime.utcnow()
+                setting.updated_at = datetime.now(UTC)
             else:
                 setting = Settings(key=key, value=value)
                 db.session.add(setting)
         
         db.session.commit()
-        
+        flash('Settings updated successfully.', 'success')
         return redirect(url_for('settings'))
         
     except Exception as e:
-        return render_template('settings.html', 
-                             config=app.config, 
-                             error=f"Failed to update settings: {str(e)}")
+        db.session.rollback()
+        flash(f"Failed to update settings: {str(e)}", 'error')
+        return redirect(url_for('settings'))
 
 def get_setting(key, default=None):
     """Get a setting value from database"""
@@ -663,7 +768,7 @@ def update_system():
         status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
         with open(status_file, 'w') as f:
             json.dump({
-                "last_update": datetime.utcnow().isoformat(),
+                "last_update": datetime.now(UTC).isoformat(),
                 "status": "running",
                 "message": "Update process started"
             }, f)
@@ -682,7 +787,7 @@ def update_system():
             # Write error status
             with open(status_file, 'w') as f:
                 json.dump({
-                    "last_update": datetime.utcnow().isoformat(),
+                    "last_update": datetime.now(UTC).isoformat(),
                     "status": "error",
                     "message": f"Update failed: {result.stderr}",
                     "log": result.stdout + result.stderr
@@ -702,7 +807,7 @@ def update_system():
             status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
             with open(status_file, 'w') as f:
                 json.dump({
-                    "last_update": datetime.utcnow().isoformat(),
+                    "last_update": datetime.now(UTC).isoformat(),
                     "status": "error",
                     "message": f"Update failed: {str(e)}"
                 }, f)
@@ -717,7 +822,7 @@ def get_update_status():
     """Get the current update status"""
     import os
     import json
-    from datetime import datetime
+    from datetime import datetime, UTC
     
     try:
         status_file = os.path.join(os.path.dirname(__file__), 'update_status.json')
@@ -997,17 +1102,29 @@ def manual_scan():
 @login_required
 def api_devices():
     devices = Device.query.all()
-    return jsonify([{
-        'id': d.id,
-        'hostname': d.hostname,
-        'ip_address': d.ip_address,
-        'mac_address': d.mac_address,
-        'brand': d.brand,
-        'model': d.model,
-        'is_online': d.is_online,
-        'last_seen': d.last_seen.isoformat() if d.last_seen else None,
-        'owner': d.owner.name if d.owner else None
-    } for d in devices])
+    device_data = []
+    for d in devices:
+        # Safe owner access to prevent SQLAlchemy relationship issues
+        owner_name = None
+        if d.person_id:
+            try:
+                person = db.session.get(Person, d.person_id)
+                owner_name = person.name if person else None
+            except Exception:
+                owner_name = None
+        
+        device_data.append({
+            'id': d.id,
+            'hostname': d.hostname,
+            'ip_address': d.ip_address,
+            'mac_address': d.mac_address,
+            'brand': d.brand,
+            'model': d.model,
+            'is_online': d.is_online,
+            'last_seen': d.last_seen.isoformat() if d.last_seen else None,
+            'owner': owner_name
+        })
+    return jsonify(device_data)
 
 @app.route('/merge_devices', methods=['POST'])
 @editor_required
@@ -1018,14 +1135,14 @@ def merge_devices():
     device_ids_to_merge = data.get('device_ids', [])
     
     try:
-        primary_device = Device.query.get(primary_device_id)
+        primary_device = db.session.get(Device, primary_device_id)
         if not primary_device:
             return jsonify({'success': False, 'error': 'Primary device not found'})
         
         merged_macs = json.loads(primary_device.merged_devices or '[]')
         
         for device_id in device_ids_to_merge:
-            device_to_merge = Device.query.get(device_id)
+            device_to_merge = db.session.get(Device, device_id)
             if device_to_merge and device_to_merge.id != primary_device.id:
                 # Add MAC to merged list
                 merged_macs.append(device_to_merge.mac_address)
@@ -1292,34 +1409,30 @@ def speed_test_full():
 def api_scan_start():
     """Start network scan with progress tracking"""
     try:
-        # Validate content-type - be more flexible for scan requests
-        if not request.is_json and request.content_type != 'application/json':
-            # Allow empty requests or check if we can parse as JSON anyway
-            if request.content_length and request.content_length > 0:
-                # Try to get data anyway - might be JSON without proper content-type
-                try:
-                    test_data = request.get_json(force=True)
-                    if test_data is None:
-                        return jsonify({
-                            'success': False,
-                            'error': 'Content-Type must be application/json or request must be empty'
-                        }), 415
-                except:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Content-Type must be application/json for non-empty requests'
-                    }), 415
-        
-        # Get JSON data with error handling
+        # Get JSON data with flexible parsing - allow empty requests
+        data = {}
         try:
-            data = request.get_json(force=True) or {}
+            # Try to get JSON data, but don't fail if it's empty or malformed
+            if request.content_length and request.content_length > 0:
+                data = request.get_json(force=True) or {}
+            # If no content or content_length is 0, use empty dict
         except Exception as json_error:
+            # If JSON parsing fails but we have content, return error
+            if request.content_length and request.content_length > 0:
+                return jsonify({
+                    'success': False,
+                    'error': f'Invalid JSON: {str(json_error)}'
+                }), 422
+            # Otherwise, proceed with empty data
+        
+        # Import and check task functionality
+        try:
+            from tasks import start_network_scan, task_manager
+        except ImportError as import_error:
             return jsonify({
                 'success': False,
-                'error': f'Invalid JSON: {str(json_error)}'
-            }), 422
-        
-        from tasks import start_network_scan, task_manager
+                'error': 'Scan functionality not available. Please check server configuration.'
+            }), 503
         
         # Check if a scan is already running
         active_tasks = task_manager.get_all_tasks()
@@ -1424,6 +1537,15 @@ def api_devices_table():
             # Return HTML for HTMX
             html = ''
             for device in devices:
+                # Safe owner access to prevent SQLAlchemy relationship issues
+                owner_name = '-'
+                if device.person_id:
+                    try:
+                        person = db.session.get(Person, device.person_id)
+                        owner_name = person.name if person else '-'
+                    except Exception:
+                        owner_name = '-'
+                
                 status_badge = '''
                     <div class="badge badge-success gap-2">
                         <i class="fas fa-circle text-xs"></i>
@@ -1455,7 +1577,7 @@ def api_devices_table():
                     <td class="text-sm font-mono">{device.ip_address or '-'}</td>
                     <td class="text-xs font-mono">{device.mac_address or '-'}</td>
                     <td class="text-sm">{device.brand or device.vendor or '-'}</td>
-                    <td class="text-sm">{device.owner.name if device.owner else '-'}</td>
+                    <td class="text-sm">{owner_name}</td>
                     <td>
                         <time class="text-sm" title="{device.last_seen.isoformat() if device.last_seen else ''}">
                             {device.last_seen.strftime('%m/%d %H:%M') if device.last_seen else '-'}
@@ -1480,6 +1602,15 @@ def api_devices_table():
             device_data = []
             
             for device in devices:
+                # Safe owner access to prevent SQLAlchemy relationship issues
+                owner_data = None
+                if device.person_id:
+                    try:
+                        person = db.session.get(Person, device.person_id)
+                        owner_data = {'name': person.name} if person else None
+                    except Exception:
+                        owner_data = None
+                
                 device_data.append({
                     'id': device.id,
                     'hostname': device.hostname,
@@ -1489,7 +1620,7 @@ def api_devices_table():
                     'vendor': device.vendor,
                     'is_online': device.is_online,
                     'last_seen': device.last_seen.isoformat() if device.last_seen else None,
-                    'owner': {'name': device.owner.name} if device.owner else None,
+                    'owner': owner_data,
                     'icon': device.icon,
                     'device_type': device.device_type
                 })
@@ -1593,6 +1724,15 @@ def api_export_devices():
             
             # Data
             for device in devices:
+                # Safe owner access to prevent SQLAlchemy relationship issues
+                owner_name = ''
+                if device.person_id:
+                    try:
+                        person = db.session.get(Person, device.person_id)
+                        owner_name = person.name if person else ''
+                    except Exception:
+                        owner_name = ''
+                
                 writer.writerow([
                     device.id,
                     device.hostname or '',
@@ -1606,7 +1746,7 @@ def api_export_devices():
                     device.first_seen.isoformat() if device.first_seen else '',
                     device.last_seen.isoformat() if device.last_seen else '',
                     device.open_ports or '',
-                    device.owner.name if device.owner else ''
+                    owner_name
                 ])
             
             output.seek(0)
@@ -1619,6 +1759,15 @@ def api_export_devices():
         elif format_type == 'json':
             device_data = []
             for device in devices:
+                # Safe owner access to prevent SQLAlchemy relationship issues
+                owner_name = None
+                if device.person_id:
+                    try:
+                        person = db.session.get(Person, device.person_id)
+                        owner_name = person.name if person else None
+                    except Exception:
+                        owner_name = None
+                
                 device_data.append({
                     'id': device.id,
                     'hostname': device.hostname,
@@ -1632,7 +1781,7 @@ def api_export_devices():
                     'first_seen': device.first_seen.isoformat() if device.first_seen else None,
                     'last_seen': device.last_seen.isoformat() if device.last_seen else None,
                     'open_ports': json.loads(device.open_ports) if device.open_ports else [],
-                    'owner': device.owner.name if device.owner else None
+                    'owner': owner_name
                 })
             
             return jsonify(device_data)
@@ -1649,12 +1798,12 @@ def api_recent_changes():
     """Get recent device changes"""
     try:
         # Get devices that changed in the last 24 hours
-        since = datetime.utcnow() - timedelta(hours=24)
+        since = datetime.now(UTC) - timedelta(hours=24)
         recent_scans = Scan.query.filter(Scan.timestamp >= since).order_by(Scan.timestamp.desc()).limit(10).all()
         
         changes = []
         for scan in recent_scans:
-            device = Device.query.get(scan.device_id)
+            device = db.session.get(Device, scan.device_id)
             if device:
                 changes.append({
                     'timestamp': scan.timestamp.isoformat(),
@@ -1669,7 +1818,7 @@ def api_recent_changes():
         
         if not changes:
             changes.append({
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(UTC).isoformat(),
                 'message': 'No recent changes',
                 'type': 'info'
             })
@@ -1720,16 +1869,29 @@ def api_sse_dashboard():
             try:
                 current_time = time.time()
                 
-                # Check for active scan tasks
+                # Check for active and completed scan tasks
                 active_scans = []
+                completed_scans = []
                 for task_id, task in task_manager.get_all_tasks().items():
-                    if task.status.value == 'running' and 'scan' in task.name.lower():
-                        active_scans.append({
-                            'task_id': task_id,
-                            'name': task.name,
-                            'progress': task.progress,
-                            'message': task.message
-                        })
+                    if 'scan' in task.name.lower():
+                        if task.status.value == 'running':
+                            active_scans.append({
+                                'task_id': task_id,
+                                'name': task.name,
+                                'progress': task.progress,
+                                'message': task.message
+                            })
+                        elif task.status.value == 'completed' and task.completed_at:
+                            # Check if this was completed recently (last 5 seconds)
+                            if (datetime.now(UTC) - task.completed_at).total_seconds() < 5:
+                                devices_found = 0
+                                if task.result and isinstance(task.result, dict):
+                                    devices_found = task.result.get('devices_found', 0)
+                                completed_scans.append({
+                                    'task_id': task_id,
+                                    'name': task.name,
+                                    'devices_found': devices_found
+                                })
                 
                 # Send scan progress updates
                 if active_scans:
@@ -1742,11 +1904,21 @@ def api_sse_dashboard():
                         }
                         yield f"data: {json.dumps(data)}\n\n"
                 
+                # Send scan completion updates
+                if completed_scans:
+                    for scan in completed_scans:
+                        data = {
+                            'type': 'scan_complete',
+                            'task_id': scan['task_id'],
+                            'devices_found': scan['devices_found']
+                        }
+                        yield f"data: {json.dumps(data)}\n\n"
+                
                 # Send heartbeat every 30 seconds
                 if current_time - last_update > 30:
                     data = {
                         'type': 'heartbeat', 
-                        'timestamp': datetime.utcnow().isoformat(),
+                        'timestamp': datetime.now(UTC).isoformat(),
                         'active_scans': len(active_scans)
                     }
                     yield f"data: {json.dumps(data)}\n\n"
@@ -1794,7 +1966,7 @@ def api_metrics():
         
         # Recent scan metrics
         recent_scans = Scan.query.filter(
-            Scan.timestamp >= datetime.utcnow() - timedelta(hours=24)
+            Scan.timestamp >= datetime.now(UTC) - timedelta(hours=24)
         ).count()
         
         # Task metrics

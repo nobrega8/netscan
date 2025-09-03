@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>{% block title %}NetScan{% endblock %}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     
@@ -264,7 +264,8 @@
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    showToast(`Scan completed! Found ${data.devices_found} devices.`, 'success');
+                    const deviceCount = data.devices_found || data.result?.length || 'unknown';
+                    showToast(`Scan completed! Found ${deviceCount} devices.`, 'success');
                     // Refresh page or update content via HTMX
                     if (typeof htmx !== 'undefined') {
                         htmx.trigger(document.body, 'scan-completed');
