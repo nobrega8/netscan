@@ -1883,7 +1883,6 @@ def api_sse_dashboard():
                             })
                         elif task.status.value == 'completed' and task.completed_at:
                             # Check if this was completed recently (last 5 seconds)
-                            import time
                             if (datetime.now(UTC) - task.completed_at).total_seconds() < 5:
                                 devices_found = 0
                                 if task.result and isinstance(task.result, dict):
